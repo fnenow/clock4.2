@@ -13,7 +13,7 @@ const projectRouter = require('./routes/project');
 const payrateRoutes = require('./routes/payrate');
 const adminRoutes = require('./routes/admin');
 const payrollRoutes = require('./routes/payroll');
-const dashboardRoutes = require('./routes/dashboard');
+// const dashboardRoutes = require('./routes/dashboard');
 const workerDashboardRoutes = require('./routes/workerDashboard');
 
 const app = express();
@@ -36,7 +36,7 @@ app.use('/api/projects', projectRouter);
 app.use('/api/payrate', payrateRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/payroll', payrollRoutes);
-app.use('/api/dashboard', dashboardRoutes);
+// app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/worker-dashboard', workerDashboardRoutes);
 
 app.use(express.static(path.join(__dirname, 'public')));
