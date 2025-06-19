@@ -61,12 +61,19 @@ let filterEndDate = '';
 let currentTab = 'open';
 let highlightOvertime = false;
 
+let durationInterval;
 async function loadData() {
   const res = await fetch('/api/clock-entries');
   allEntries = await res.json();
   allSessions = getSessions(allEntries);
   populateFilters();
   renderSessions();
+
+  if (durationInterval) clearInterval(durationInterval);
+  durationInterval = setInterval(() => {
+    allSessions = getSessions(allEntries);
+    renderSessions();
+  }, 60000); // or 1000 for per second
 }
 
 function populateFilters() {
