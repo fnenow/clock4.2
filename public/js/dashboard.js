@@ -9,6 +9,16 @@ function formatDuration(start, end) {
   return `${h}h ${m}m`;
 }
 
+// Returns duration in hours as a decimal
+function getDurationHours(start, end) {
+  if (!start) return 0;
+  const startDate = new Date(start);
+  const endDate = end ? new Date(end) : new Date();
+  const diffMs = endDate - startDate;
+  if (diffMs < 0) return 0;
+  return diffMs / (1000 * 60 * 60);
+}
+
 function getSessions(entries) {
   // Pair by session_id
   const bySession = {};
@@ -20,6 +30,9 @@ function getSessions(entries) {
   for (const [session_id, pair] of Object.entries(bySession)) {
     const inEntry = pair.in;
     const outEntry = pair.out;
+    const durationHours = inEntry ? getDurationHours(inEntry.datetime_local, outEntry?.datetime_local) : 0;
+    const payRate = inEntry?.pay_rate || outEntry?.pay_rate || 0;
+    const amount = payRate && durationHours ? (payRate * durationHours) : 0;
     sessions.push({
       session_id,
       worker_id: inEntry?.worker_id || outEntry?.worker_id,
@@ -28,11 +41,12 @@ function getSessions(entries) {
       project_name: inEntry?.project_name || outEntry?.project_name,
       clock_in: inEntry?.datetime_local || '',
       clock_out: outEntry?.datetime_local || '',
-      // changed below for display count down.
       duration: inEntry ? formatDuration(inEntry.datetime_local, outEntry?.datetime_local) : '',
+      durationHours,
+      amount,
       note_in: inEntry?.note || '',
       note_out: outEntry?.note || '',
-      pay_rate: inEntry?.pay_rate || outEntry?.pay_rate || '',
+      pay_rate: payRate,
       id_in: inEntry?.id,
       id_out: outEntry?.id
     });
@@ -60,8 +74,8 @@ let filterStartDate = '';
 let filterEndDate = '';
 let currentTab = 'open';
 let highlightOvertime = false;
-
 let durationInterval;
+
 async function loadData() {
   const res = await fetch('/api/clock-entries');
   allEntries = await res.json();
@@ -73,7 +87,7 @@ async function loadData() {
   durationInterval = setInterval(() => {
     allSessions = getSessions(allEntries);
     renderSessions();
-  }, 60000); // or 1000 for per second
+  }, 60000); // update every minute
 }
 
 function populateFilters() {
@@ -111,6 +125,7 @@ function renderSessions() {
           <span class="editable" data-type="clock_out" data-session="${s.session_id}" contenteditable>${s.clock_out || ''}</span>
         </td>
         <td>${s.duration || ''}</td>
+        <td>${s.amount ? `$${s.amount.toFixed(2)}` : ''}</td>
         <td>
           <span class="editable" data-type="note_in" data-session="${s.session_id}" contenteditable>${s.note_in || ''}</span>
         </td>
@@ -216,9 +231,9 @@ window.forceClockOut = forceClockOut;
 
 // CSV export
 document.getElementById('exportCSV').addEventListener('click', () => {
-  let csv = "Worker,Project,Clock-in,Clock-out,Duration,Note In,Note Out,Pay Rate\n";
+  let csv = "Worker,Project,Clock-in,Clock-out,Duration,Amount,Note In,Note Out,Pay Rate\n";
   allSessions.forEach(s => {
-    csv += `"${s.worker_name}","${s.project_name}","${s.clock_in}","${s.clock_out}","${s.duration}","${s.note_in}","${s.note_out}","${s.pay_rate}"\n`;
+    csv += `"${s.worker_name}","${s.project_name}","${s.clock_in}","${s.clock_out}","${s.duration}","${s.amount ? `$${s.amount.toFixed(2)}` : ''}","${s.note_in}","${s.note_out}","${s.pay_rate}"\n`;
   });
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
