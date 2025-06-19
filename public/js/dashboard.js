@@ -28,7 +28,8 @@ function getSessions(entries) {
       project_name: inEntry?.project_name || outEntry?.project_name,
       clock_in: inEntry?.datetime_local || '',
       clock_out: outEntry?.datetime_local || '',
-      duration: inEntry && outEntry ? formatDuration(inEntry.datetime_local, outEntry.datetime_local) : '',
+      // changed below for display count down.
+      duration: inEntry ? formatDuration(inEntry.datetime_local, outEntry?.datetime_local) : '',
       note_in: inEntry?.note || '',
       note_out: outEntry?.note || '',
       pay_rate: inEntry?.pay_rate || outEntry?.pay_rate || '',
