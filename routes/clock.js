@@ -51,13 +51,14 @@ router.post('/in', async (req, res) => {
     // Prevent double clock-in
     const already = await pool.query(
       `SELECT * FROM clock_entries
-       WHERE worker_id=$1 AND project_id=$2 AND action='in'
+       WHERE worker_id = $1 AND project_id = $2 AND action = 'in'
        AND NOT EXISTS (
          SELECT 1 FROM clock_entries AS out
-         WHERE out.worker_id=$1 AND out.project_id=$2 AND out.action='out' AND out.datetime_local > clock_entries.datetime_local
+         WHERE out.session_id = clock_entries.session_id AND out.action = 'out'
        )`,
       [worker_id, project_id]
     );
+
     if (already.rows.length > 0)
       return res.status(400).json({ message: 'Already clocked in to this project' });
 
