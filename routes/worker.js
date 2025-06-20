@@ -39,7 +39,7 @@ router.get('/projects/:worker_id', async (req, res) => {
 // POST /api/worker/change-password
 router.post('/change-password', async (req, res) => {
   const { worker_id, old_password, new_password } = req.body;
-  const q = await pool.query('SELECT * FROM workers WHERE worker_id = $1 AND password = $2', [worker_id, old_password]);
+  const q = await pool.query('SELECT * FROM workers WHERE worker_id = $1 AND password_harsh = $2', [worker_id, old_password]);
   const worker = q.rows[0];
   if (!worker) return res.status(401).json({ message: "Incorrect old password" });
   await pool.query('UPDATE workers SET password = $1 WHERE worker_id = $2', [new_password, worker_id]);
