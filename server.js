@@ -3,7 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const session = require('express-session');
 const pgSession = require('connect-pg-simple')(session);
-// const favicon = require('serve-favicon');
+const favicon = require('serve-favicon');
 // app.use(favicon(__dirname + '/public/favicon.ico'));
 
 require('dotenv').config();
