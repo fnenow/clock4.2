@@ -8,7 +8,12 @@ function requireWorkerLogin(req, res, next) {
   }
   res.status(401).json({ message: "Not logged in" });
 }
+router.use(requireWorkerLogin);
 
+router.get('/entries', async (req, res) => {
+  const worker_id = req.session.worker_id;
+  // ... fetch and respond with only this worker's sessions ...
+});
 // GET /api/worker-dashboard/entries?worker_id=xxx
 router.get('/entries', async (req, res) => {
   const worker_id = req.query.worker_id;
