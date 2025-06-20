@@ -5,7 +5,6 @@ const session = require('express-session');
 const pgSession = require('connect-pg-simple')(session);
 //const favicon = require('serve-favicon');
 //app.use(favicon(__dirname + '/public/favicon.ico'));
-app.use(express.static('public'));
 
 require('dotenv').config();
 const pool = require('./db');
