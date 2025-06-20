@@ -34,7 +34,7 @@ router.get('/projects/:worker_id', async (req, res) => {
   const q = await pool.query(
     `SELECT p.id, p.name
      FROM projects p
-     JOIN worker_projects wp ON p.id = wp.project_id
+     JOIN project_workers wp ON p.id = wp.project_id
      WHERE wp.worker_id = $1`,
     [req.params.worker_id]
   );
