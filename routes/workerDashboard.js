@@ -2,6 +2,13 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db');
 
+function requireWorkerLogin(req, res, next) {
+  if (req.session && req.session.worker_id) {
+    return next();
+  }
+  res.status(401).json({ message: "Not logged in" });
+}
+
 // GET /api/worker-dashboard/entries?worker_id=xxx
 router.get('/entries', async (req, res) => {
   const worker_id = req.query.worker_id;
