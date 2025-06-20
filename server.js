@@ -45,5 +45,9 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'timeclock.html'));
 });
 
+app.use((req, res) => {
+  res.status(404).send('404 Not Found');
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`FNE Time Clock server running on ${PORT}`));
