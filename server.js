@@ -22,7 +22,7 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
-app.use(clockRoutes);
+//app.use(clockRoutes);
 
 app.use(session({
   store: new pgSession({ pool }),
