@@ -7,6 +7,18 @@ let currentTab = 'open';
 let currentWorker = null;
 let durationInterval;
 
+async function checkLogin() {
+  const res = await fetch('/api/worker-dashboard/check', { credentials: 'include' });
+  if (!res.ok) {
+    window.location = '/timeclock.html';
+    return false;
+  }
+  const data = await res.json();
+  currentWorker = { worker_id: data.worker_id, name: data.name };
+  document.getElementById('greeting').textContent = `Worker: ${currentWorker.name} (${currentWorker.worker_id})`;
+  return true;
+}
+
 function formatDuration(start, end) {
   if (!start) return '';
   const startDate = new Date(start);
@@ -27,7 +39,6 @@ function getDurationHours(start, end) {
 }
 
 function getSessions(entries) {
-  // Pair by session_id
   const bySession = {};
   for (const e of entries) {
     if (!bySession[e.session_id]) bySession[e.session_id] = {};
@@ -63,18 +74,8 @@ function getUnique(entries, field) {
 }
 
 async function loadWorkerAndData() {
-  // Get worker identity from localStorage (set on login from timeclock.html)
-  let worker = localStorage.getItem('worker');
-  if (!worker) {
-    alert("Please log in from the timeclock page first.");
-    window.location = "timeclock.html";
-    return;
-  }
-  currentWorker = JSON.parse(worker);
-  document.getElementById('greeting').textContent = `Worker: ${currentWorker.name} (${currentWorker.worker_id})`;
-
-  // Fetch only this worker's entries from new API
-  const res = await fetch(`/api/worker-dashboard/entries?worker_id=${encodeURIComponent(currentWorker.worker_id)}`);
+  if (!await checkLogin()) return;
+  const res = await fetch(`/api/worker-dashboard/entries`, { credentials: 'include' });
   allEntries = await res.json();
   allSessions = getSessions(allEntries);
   populateFilters();
@@ -139,6 +140,7 @@ async function patchEntry(id, body) {
   await fetch(`/api/worker-dashboard/entries/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify(body)
   });
 }
@@ -176,7 +178,6 @@ function updateTabs() {
   document.getElementById('tabAll').classList.toggle('selected', currentTab === 'all');
 }
 
-// CSV export
 document.getElementById('exportCSV').addEventListener('click', () => {
   let csv = "Project,Clock-in,Clock-out,Duration,Amount,Note In,Note Out,Pay Rate\n";
   allSessions.forEach(s => {
@@ -192,5 +193,4 @@ document.getElementById('exportCSV').addEventListener('click', () => {
   document.body.removeChild(a);
 });
 
-// On page load: require worker login info, then load data
 loadWorkerAndData();
