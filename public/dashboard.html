@@ -4,19 +4,81 @@
   <meta charset="UTF-8">
   <title>Session Dashboard</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 30px; }
-    table { border-collapse: collapse; width: 100%; margin-top: 15px; }
-    th, td { border: 1px solid #ccc; padding: 6px 12px; text-align: left; }
-    th { background: #f0f0f0; }
-    .filters { margin-bottom: 20px; }
-    button { padding: 2px 8px; }
-    .tab { padding: 8px 16px; border: 1px solid #ccc; cursor: pointer; background: #f8f8f8; }
-    .tab.selected { background: #e0e0ff; font-weight: bold; }
-    .overtime { background: #ffe0e0 !important; }
-    .editable:focus { background: #fffbe6; outline: 1px solid #dab; }
+    /* (1) Sidebar & Layout styles */
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f8f9fa;
+    }
+    .admin-container { display: flex; min-height: 100vh; }
+    .admin-sidebar {
+      width: 220px;
+      background: #222;
+      color: #fff;
+      padding: 2rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    .admin-sidebar h2 { margin-bottom: 1rem; }
+    .admin-sidebar a {
+      color: #fff;
+      text-decoration: none;
+      margin-bottom: 0.7em;
+      padding: 0.4em 0.8em;
+      border-radius: 4px;
+      display: block;
+      font-weight: 500;
+    }
+    .admin-sidebar a.active, .admin-sidebar a:hover {
+      background: #1976d2;
+    }
+    .admin-sidebar hr {
+      border: none;
+      border-top: 1px solid #555;
+      margin: 1.5em 0;
+    }
+    .admin-main-content {
+      flex: 1;
+      padding: 2.5rem 2rem;
+      background: #f8f9fa;
+      min-height: 100vh;
+    }
+    .logout-btn, #adminLogoutBtn {
+      background: #e53935;
+      color: #fff;
+      font-weight: bold;
+      border: none;
+      border-radius: 4px;
+      padding: 0.6em 1.2em;
+      cursor: pointer;
+      margin-top: 2em;
+      display: inline-block;
+    }
+    @media (max-width: 700px) {
+      .admin-container { flex-direction: column; }
+      .admin-sidebar { width: 100%; flex-direction: row; gap: 0.7rem; padding: 1rem; }
+      .admin-main-content { padding: 1rem; }
+    }
   </style>
 </head>
 <body>
+  <div class="admin-container">
+    <!-- (2) Sidebar navigation -->
+    <aside class="admin-sidebar">
+      <h2>Admin Menu</h2>
+      <a href="dashboard.html">Dashboard</a>
+      <a href="admin_projects.html">Projects</a>
+      <a href="admin_workers.html" class="active">Workers</a>
+      <a href="admin_payroll.html">Payroll</a>
+      <a href="admin_clock_entries.html">Clock Entries</a>
+      <a href="admin_payrates.html">Pay Rates</a>
+      <a href="admin_settings.html">Settings</a>
+      <hr>
+      <a href="#" id="adminLogoutBtn">Logout</a>
+    </aside>
+    <!-- (3) Main content area -->
+    <main class="admin-main-content">
   <h1>Session Dashboard</h1>
   <div class="filters">
     Worker:
@@ -51,6 +113,8 @@
     </thead>
     <tbody></tbody>
   </table>
+    </main>
+  </div>
   <script src="/js/dashboard.js"></script>
 </body>
 </html>
