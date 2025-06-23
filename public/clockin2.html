@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FNE Time Clock</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f8f9fa;
+      text-align: center;
+      padding: 20px;
+    }
+    h1, h2 { color: #c00; }
+    .card {
+      max-width: 430px;
+      margin: 40px auto;
+      border-radius: 14px;
+    }
+    .section {
+      margin: 22px 0 12px 0;
+    }
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: bold;
+      text-align: left;
+    }
+    input[type="text"], input[type="datetime-local"], input[type="password"] {
+      font-size: 16px;
+      padding: 8px;
+      width: 80%;
+      max-width: 300px;
+      margin: 0 auto 10px auto;
+      display: block;
+    }
+    input[type="radio"] {
+      margin-right: 7px;
+    }
+    button {
+      background: #d22;
+      color: #fff;
+      border: none;
+      margin-top: 18px;
+      border-radius: 8px;
+      padding: 10px 38px;
+      font-size: 17px;
+      transition: background 0.16s;
+    }
+    button:hover {
+      background: #a00;
+    }
+    .logout-btn {
+      background: #ccc;
+      color: #333;
+      margin-top: 18px;
+    }
+    .logout-btn:hover {
+      background: #888;
+      color: #fff;
+    }
+    .alert {
+      max-width: 360px;
+      margin: 18px auto;
+    }
+  </style>
+</head>
+<body>
+  <h1 class="mb-3">FNE Time Clock</h1>
+  <div class="card" id="login-section">
+    <div class="card-body">
+      <h5 class="card-title mb-3">Worker Login</h5>
+      <div class="section">
+        <label for="workerId">Last 5 digits of phone</label>
+        <input class="form-control" id="workerId" maxlength="5" autocomplete="username" />
+      </div>
+      <div class="section">
+        <label for="password">Password</label>
+        <input class="form-control" type="password" id="password" value="99999" autocomplete="current-password" />
+      </div>
+      <button class="w-100" onclick="login()">Login</button>
+    </div>
+  </div>
+
+  <div class="card" id="clock-section" style="display:none;">
+    <div class="card-body">
+      <h2 class="mb-2" style="font-size:1.4rem;">Clock In/Out</h2>
+      <div class="section">
+        <label>Clock In/Out</label>
+        <input type="radio" name="action" value="Clock In" id="in"> <label for="in" style="display:inline;font-weight:normal;">Clock In</label>
+        <input type="radio" name="action" value="Clock Out" id="out" style="margin-left:16px;"> <label for="out" style="display:inline;font-weight:normal;">Clock Out</label>
+      </div>
+      <div class="section">
+        <label>Project</label>
+        <input type="radio" name="project" value="Cafe" id="cafe"> <label for="cafe" style="display:inline;font-weight:normal;">Cafe</label>
+        <input type="radio" name="project" value="Warehouse" id="warehouse" style="margin-left:16px;"> <label for="warehouse" style="display:inline;font-weight:normal;">Warehouse</label>
+        <input type="radio" name="project" value="Office" id="office" style="margin-left:16px;"> <label for="office" style="display:inline;font-weight:normal;">Office</label>
+      </div>
+      <div class="section">
+        <label for="datetime">Time</label>
+        <input type="datetime-local" id="datetime" />
+      </div>
+      <div class="section">
+        <label for="note">Notes (optional)</label>
+        <input type="text" id="note" placeholder="e.g. Arrived late" />
+      </div>
+      <button onclick="tryAutoSend()">Submit &amp; Send SMS</button>
+      <button class="logout-btn w-100" onclick="logout()">Logout</button>
+    </div>
+  </div>
+
+  <script>
+    // Simulate login: show clock section and hide login
+    function login() {
+      const workerId = document.getElementById('workerId').value.trim();
+      const password = document.getElementById('password').value;
+      if (workerId.length === 5 && password) {
+        document.getElementById('login-section').style.display = 'none';
+        document.getElementById('clock-section').style.display = '';
+        setCurrentDatetime();
+      } else {
+        alert('Please enter a valid Worker ID and Password.');
+      }
+    }
+    function logout() {
+      document.getElementById('clock-section').style.display = 'none';
+      document.getElementById('login-section').style.display = '';
+      document.getElementById('workerId').value = '';
+      document.getElementById('password').value = '';
+      // Clear clock form
+      document.querySelectorAll('input[name="action"], input[name="project"]').forEach(el => el.checked = false);
+      document.getElementById('note').value = '';
+      setCurrentDatetime();
+    }
+    // Set current datetime on load/clock form
+    function setCurrentDatetime() {
+      const now = new Date();
+      now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+      document.getElementById("datetime").value = now.toISOString().slice(0,16);
+    }
+    // Try auto-send SMS if all required fields are filled
+    function tryAutoSend() {
+      const action = document.querySelector('input[name="action"]:checked')?.value;
+      const project = document.querySelector('input[name="project"]:checked')?.value;
+      const datetime = document.getElementById('datetime').value;
+      const note = document.getElementById('note').value;
+      if (action && project && datetime) {
+        const message = `Note:\n${action}\nTime: ${datetime}\nProject: ${project}${note ? `\nNote: ${note}` : ''}`;
+        const smsURL = `sms:+17073871111?body=${encodeURIComponent(message)}`;
+        window.location.href = smsURL;
+      } else {
+        alert('Please select Clock In/Out, Project, and Time.');
+      }
+    }
+    // Set datetime on showing the clock section
+    document.addEventListener('DOMContentLoaded', () => {
+      setCurrentDatetime();
+      // Re-set datetime when clock-section is shown
+      document.getElementById('clock-section').addEventListener('transitionstart', setCurrentDatetime);
+    });
+    // Watch for value changes to try auto-send
+    document.querySelectorAll('input[name="action"], input[name="project"], #datetime, #note').forEach(el => {
+      el.addEventListener('change', tryAutoSend);
+    });
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
