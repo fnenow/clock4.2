@@ -41,6 +41,14 @@ app.use('/api/payroll', payrollRoutes);
 // app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/worker-dashboard', workerDashboardRoutes);
 
+// --- ADDED ALIAS ROUTE FOR /api/clock-entries ---
+app.use('/api/clock-entries', (req, res, next) => {
+  // Forward to /entries route in clockRoutes
+  req.url = '/entries' + req.url.substring('/api/clock-entries'.length);
+  clockRoutes(req, res, next);
+});
+// --- END ALIAS ROUTE ---
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/', (req, res) => {
