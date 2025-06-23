@@ -34,22 +34,128 @@
 <body class="bg-light">
 <div class="container mt-5">
   <h2 class="text-center mb-3">Payroll (Grouped by Date)</h2>
-  <!-- Optional: Filters can be added here if needed, similar to payroll.html -->
+  <!-- Filters -->
+  <form class="row g-2 mb-3" id="payroll-filter-form" onsubmit="return false;">
+    <div class="col-auto">
+      <label>Start</label>
+      <input type="date" class="form-control" id="filter-start">
+    </div>
+    <div class="col-auto">
+      <label>End</label>
+      <input type="date" class="form-control" id="filter-end">
+    </div>
+    <div class="col-auto">
+      <label>Worker</label>
+      <select class="form-select" id="filter-worker"></select>
+    </div>
+    <div class="col-auto">
+      <label>Project</label>
+      <select class="form-select" id="filter-project"></select>
+    </div>
+    <div class="col-auto">
+      <label>Billed</label>
+      <select class="form-select" id="filter-billed">
+        <option value="">All</option>
+        <option value="false">Unbilled</option>
+        <option value="true">Billed</option>
+      </select>
+    </div>
+    <div class="col-auto">
+      <label>Paid</label>
+      <select class="form-select" id="filter-paid">
+        <option value="">All</option>
+        <option value="false">Unpaid</option>
+        <option value="true">Paid</option>
+      </select>
+    </div>
+    <div class="col-auto d-flex align-items-end">
+      <button class="btn btn-primary" id="filter-btn" type="button">Filter</button>
+    </div>
+    <div class="col-auto d-flex align-items-end">
+      <button class="btn btn-success" type="button" onclick="billSelected()">Mark Billed</button>
+    </div>
+    <div class="col-auto d-flex align-items-end">
+      <button class="btn btn-info" type="button" onclick="paidSelected()">Mark Paid</button>
+    </div>
+    <div class="col-auto d-flex align-items-end">
+      <button class="btn btn-secondary" type="button" onclick="exportCSV()">Export CSV</button>
+    </div>
+  </form>
+  <div id="payroll-summary"></div>
   <div id="payroll-table-grouped"></div>
 </div>
 
 <script>
-// Utility to format date (copied from payroll.js)
 function formatDateDisplay(str) {
   if (!str) return '';
+  // Accepts either "2025-06-15T00:00:00.000Z" or "2025-06-15"
   const d = new Date(str);
   if (!isNaN(d.getTime())) {
+    // Get year-month-day in UTC (matches DB Zulu string)
     return d.toISOString().slice(0, 10);
   }
+  // If can't parse, just return as is
   return str.length > 10 ? str.slice(0, 10) : str;
 }
 
-// Render grouped payroll table
+let filters = {
+  start_date: "",
+  end_date: "",
+  worker_id: "",
+  project_id: "",
+  billed: "",
+  paid: ""
+};
+
+async function loadWorkersAndProjects() {
+  // Populate worker and project dropdowns
+  const [workersRes, projectsRes] = await Promise.all([
+    fetch('/api/worker/all'),  // your /routes/worker.js should have router.get('/all')
+    fetch('/api/projects')     // your /routes/project.js should have router.get('/')
+  ]);
+  const workers = await workersRes.json();
+  const projects = await projectsRes.json();
+
+  let wOpt = '<option value="">All</option>';
+  workers.forEach(w => wOpt += `<option value="${w.worker_id}">${w.name}</option>`);
+  document.getElementById('filter-worker').innerHTML = wOpt;
+
+  let pOpt = '<option value="">All</option>';
+  projects.forEach(p => pOpt += `<option value="${p.id}">${p.name}</option>`);
+  document.getElementById('filter-project').innerHTML = pOpt;
+}
+
+function getFilterValues() {
+  return {
+    start_date: document.getElementById('filter-start').value,
+    end_date: document.getElementById('filter-end').value,
+    worker_id: document.getElementById('filter-worker').value,
+    project_id: document.getElementById('filter-project').value,
+    billed: document.getElementById('filter-billed').value,
+    paid: document.getElementById('filter-paid').value
+  };
+}
+
+function renderPayrollSummary(workerSums) {
+  if (!workerSums.length) {
+    document.getElementById('payroll-summary').innerHTML = '';
+    return;
+  }
+  let html = `<h5>Period Summary</h5>
+  <table class="table table-bordered table-sm mb-4"><thead>
+    <tr><th>Worker</th><th>Regular Hours</th><th>OT Hours</th><th>Amount</th></tr>
+  </thead><tbody>`;
+  workerSums.forEach(w =>
+    html += `<tr>
+      <td>${w.worker_name}</td>
+      <td>${w.regular_time.toFixed(2)}</td>
+      <td>${w.overtime.toFixed(2)}</td>
+      <td>$${w.pay_amount.toFixed(2)}</td>
+    </tr>`);
+  html += '</tbody></table>';
+  document.getElementById('payroll-summary').innerHTML = html;
+}
+
 function renderPayrollGroupedTable(data) {
   let html = `<table class="payroll-group-table">
     <thead>
@@ -92,32 +198,31 @@ function renderPayrollGroupedTable(data) {
   document.getElementById("payroll-table-grouped").innerHTML = html;
 }
 
-// Load real payroll data from backend and render
 async function loadPayrollGrouped() {
-  // You can add filters here if needed, similar to payroll.html
-  const res = await fetch('/api/payroll');
-  const { rows } = await res.json();
+  filters = getFilterValues();
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([k, v]) => { if (v) params.append(k, v); });
+  const res = await fetch('/api/payroll?' + params.toString());
+  const { rows, workerSums } = await res.json();
 
-  // Compose and group rows for display like the screenshot
-  // First, sort by date
+  renderPayrollSummary(workerSums);
+
+  // Sort by date for grouping
   rows.sort((a, b) => {
     const aDate = a.datetime_local || a.datetime_utc || '';
     const bDate = b.datetime_local || b.datetime_utc || '';
     return aDate.localeCompare(bDate);
   });
 
-  // Project to the format needed for grouped table
+  // Compose grouped rows
   const groupedRows = [];
-  let lastDate = '';
   for (const row of rows) {
-    // Use only regular+OT as separate rows, or sum if you want to combine (here we just show all)
-    // "Date" as local date (YYYY-MM-DD)
     const date = formatDateDisplay(row.datetime_local || row.datetime_utc);
     groupedRows.push({
       date,
       project: row.project_name || '',
       worker: row.worker_name || '',
-      in: row.datetime_local ? row.datetime_local.slice(11, 16) : '', // "HH:MM"
+      in: row.datetime_local ? row.datetime_local.slice(11, 16) : '',
       out: row.datetime_out_local ? row.datetime_out_local.slice(11, 16) : '',
       hours: row.regular_time && Number(row.regular_time) !== 0
         ? Number(row.regular_time)
@@ -128,7 +233,7 @@ async function loadPayrollGrouped() {
     });
   }
 
-  // Group by date for visual effect (first row of each date shows the date, others are blank)
+  // Group by date for visual effect
   let renderArr = [];
   let currentDate = '';
   for (let row of groupedRows) {
@@ -143,7 +248,48 @@ async function loadPayrollGrouped() {
   renderPayrollGroupedTable(renderArr);
 }
 
-window.onload = loadPayrollGrouped;
+function exportCSV() {
+  filters = getFilterValues();
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([k, v]) => { if (v) params.append(k, v); });
+  window.open('/api/payroll/export?' + params.toString(), '_blank');
+}
+
+function toggleAllChecks(source) {
+  document.querySelectorAll('.payroll-check').forEach(cb => cb.checked = source.checked);
+}
+
+async function billSelected() {
+  const ids = Array.from(document.querySelectorAll('.payroll-check:checked')).map(cb => Number(cb.value));
+  if (!ids.length) return alert('No entries selected.');
+  const billed_date = prompt('Enter Bill Date (any format):');
+  if (!billed_date) return;
+  await fetch('/api/payroll/bill', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entry_ids: ids, billed_date })
+  });
+  loadPayrollGrouped();
+}
+
+async function paidSelected() {
+  const ids = Array.from(document.querySelectorAll('.payroll-check:checked')).map(cb => Number(cb.value));
+  if (!ids.length) return alert('No entries selected.');
+  const paid_date = prompt('Enter Paid Date (any format):');
+  if (!paid_date) return;
+  await fetch('/api/payroll/paid', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entry_ids: ids, paid_date })
+  });
+  loadPayrollGrouped();
+}
+
+window.onload = async function () {
+  await loadWorkersAndProjects();
+  document.getElementById('filter-btn').onclick = loadPayrollGrouped;
+  loadPayrollGrouped();
+};
 </script>
 </body>
 </html>
