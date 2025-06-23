@@ -88,12 +88,16 @@
         Date:
         <input type="date" id="filterStartDate"> to
         <input type="date" id="filterEndDate">
-        <span style="margin-left:20px;">
+      </div>
+      <div class="filters" style="margin-top: 12px;">
+        <span>
           <span class="tab selected" id="tabOpen">Open Sessions</span>
           <span class="tab" id="tabClosed">Closed Sessions</span>
           <span class="tab" id="tabAll">All Sessions</span>
         </span>
-        <label style="margin-left:20px;"><input type="checkbox" id="highlightOvertime"> Highlight Overtime Days</label>
+        <label style="margin-left:20px;">
+          <input type="checkbox" id="highlightOvertime"> Highlight Overtime Days
+        </label>
         <button id="exportCSV" style="float:right;">Export CSV</button>
       </div>
       <table id="sessionTable">
