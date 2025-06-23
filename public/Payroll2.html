@@ -34,10 +34,22 @@
 <body class="bg-light">
 <div class="container mt-5">
   <h2 class="text-center mb-3">Payroll (Grouped by Date)</h2>
+  <!-- Optional: Filters can be added here if needed, similar to payroll.html -->
   <div id="payroll-table-grouped"></div>
 </div>
 
 <script>
+// Utility to format date (copied from payroll.js)
+function formatDateDisplay(str) {
+  if (!str) return '';
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    return d.toISOString().slice(0, 10);
+  }
+  return str.length > 10 ? str.slice(0, 10) : str;
+}
+
+// Render grouped payroll table
 function renderPayrollGroupedTable(data) {
   let html = `<table class="payroll-group-table">
     <thead>
@@ -80,21 +92,58 @@ function renderPayrollGroupedTable(data) {
   document.getElementById("payroll-table-grouped").innerHTML = html;
 }
 
-// Example data (should be replaced with server data)
-const payrollData = [
-  {date: "2025-06-13", project: "Hawthorne Trim", worker: "John", in: "7:00", out: "8:00", hours: 1, ot: 1, rate: 45, amount: 45},
-  {date: "2025-06-13", project: "Calado", worker: "Jack", in: "8:00", out: "13:00", hours: 5, ot: 1, rate: 45, amount: 225},
-  {date: "2025-06-13", project: "Hawthorne Trim", worker: "Jorge", in: "8:00", out: "10:00", hours: 2, ot: 1, rate: 45, amount: 90},
-  {date: "2025-06-15", project: "Calado", worker: "John", in: "10:00", out: "11:00", hours: 1, ot: 1, rate: 45, amount: 45},
-  {date: "2025-06-15", project: "Hawthorne Trim", worker: "Jack", in: "11:00", out: "12:00", hours: 1, ot: 1, rate: 45, amount: 45},
-  {date: "2025-06-15", project: "Hawthorne Trim", worker: "Lima", in: "12:00", out: "13:00", hours: 1, ot: 1, rate: 45, amount: 45},
-  {date: "2025-06-15", project: "Hawthorne Trim", worker: "John", in: "13:00", out: "14:00", hours: 1, ot: 1, rate: 45, amount: 45}
-];
+// Load real payroll data from backend and render
+async function loadPayrollGrouped() {
+  // You can add filters here if needed, similar to payroll.html
+  const res = await fetch('/api/payroll');
+  const { rows } = await res.json();
 
-// On page load, render the grouped payroll table
-window.onload = function() {
-  renderPayrollGroupedTable(payrollData);
-};
+  // Compose and group rows for display like the screenshot
+  // First, sort by date
+  rows.sort((a, b) => {
+    const aDate = a.datetime_local || a.datetime_utc || '';
+    const bDate = b.datetime_local || b.datetime_utc || '';
+    return aDate.localeCompare(bDate);
+  });
+
+  // Project to the format needed for grouped table
+  const groupedRows = [];
+  let lastDate = '';
+  for (const row of rows) {
+    // Use only regular+OT as separate rows, or sum if you want to combine (here we just show all)
+    // "Date" as local date (YYYY-MM-DD)
+    const date = formatDateDisplay(row.datetime_local || row.datetime_utc);
+    groupedRows.push({
+      date,
+      project: row.project_name || '',
+      worker: row.worker_name || '',
+      in: row.datetime_local ? row.datetime_local.slice(11, 16) : '', // "HH:MM"
+      out: row.datetime_out_local ? row.datetime_out_local.slice(11, 16) : '',
+      hours: row.regular_time && Number(row.regular_time) !== 0
+        ? Number(row.regular_time)
+        : (row.overtime && Number(row.overtime) !== 0 ? Number(row.overtime) : ''),
+      ot: row.overtime && Number(row.overtime) !== 0 ? Number(row.overtime) : '',
+      rate: row.pay_rate ? Number(row.pay_rate) : '',
+      amount: row.pay_amount ? Number(row.pay_amount) : ''
+    });
+  }
+
+  // Group by date for visual effect (first row of each date shows the date, others are blank)
+  let renderArr = [];
+  let currentDate = '';
+  for (let row of groupedRows) {
+    if (row.date !== currentDate) {
+      currentDate = row.date;
+      renderArr.push({ ...row });
+    } else {
+      renderArr.push({ ...row, date: '' });
+    }
+  }
+
+  renderPayrollGroupedTable(renderArr);
+}
+
+window.onload = loadPayrollGrouped;
 </script>
 </body>
 </html>
