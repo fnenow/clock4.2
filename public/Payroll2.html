@@ -1,110 +1,100 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>FNE Time Clock - Payroll</title>
+  <title>FNE Time Clock - Payroll Grouped</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
-    body { background-color: #f8f9fa; }
-    .payroll-table {
+    .payroll-group-table {
       width: 100%;
       border-collapse: collapse;
       margin-top: 20px;
+      background: #fff;
     }
-    .payroll-table th, .payroll-table td {
-      border: 1px solid #dee2e6;
-      padding: 0.5rem;
+    .payroll-group-table th, .payroll-group-table td {
+      border: 1px solid #bdbdbd;
+      padding: 6px 10px;
       text-align: center;
       vertical-align: middle;
     }
-    .payroll-table thead {
-      background-color: #e9ecef;
-    }
-    .payroll-table tbody tr:nth-child(even) {
-      background-color: #f8f9fa;
+    .payroll-group-table th {
+      background: #bdbdbd;
+      color: #222;
+      font-weight: bold;
     }
     .payroll-date-cell {
       font-weight: bold;
-      background-color: #f1f3f5;
+      background: #eee;
+      min-width: 110px;
+    }
+    .payroll-group-table tr:nth-child(even) td:not(.payroll-date-cell) {
+      background: #f6f6f6;
     }
   </style>
 </head>
-<body>
-  <div class="container mt-5">
-    <h2 class="text-center mb-4">Payroll</h2>
+<body class="bg-light">
+<div class="container mt-5">
+  <h2 class="text-center mb-3">Payroll (Grouped by Date)</h2>
+  <div id="payroll-table-grouped"></div>
+</div>
 
-    <!-- Filters -->
-    <form class="row g-2 mb-4" id="payroll-filter-form" onsubmit="return false;">
-      <div class="col-auto">
-        <label>Start</label>
-        <input type="date" class="form-control" id="filter-start">
-      </div>
-      <div class="col-auto">
-        <label>End</label>
-        <input type="date" class="form-control" id="filter-end">
-      </div>
-      <div class="col-auto">
-        <label>Worker</label>
-        <select class="form-select" id="filter-worker"></select>
-      </div>
-      <div class="col-auto">
-        <label>Project</label>
-        <select class="form-select" id="filter-project"></select>
-      </div>
-      <div class="col-auto">
-        <label>Billed</label>
-        <select class="form-select" id="filter-billed">
-          <option value="">All</option>
-          <option value="false">Unbilled</option>
-          <option value="true">Billed</option>
-        </select>
-      </div>
-      <div class="col-auto">
-        <label>Paid</label>
-        <select class="form-select" id="filter-paid">
-          <option value="">All</option>
-          <option value="false">Unpaid</option>
-          <option value="true">Paid</option>
-        </select>
-      </div>
-      <div class="col-auto d-flex align-items-end">
-        <button class="btn btn-primary" id="filter-btn" type="button">Filter</button>
-      </div>
-      <div class="col-auto d-flex align-items-end">
-        <button class="btn btn-success" type="button" onclick="billSelected()">Mark Billed</button>
-      </div>
-      <div class="col-auto d-flex align-items-end">
-        <button class="btn btn-info" type="button" onclick="paidSelected()">Mark Paid</button>
-      </div>
-      <div class="col-auto d-flex align-items-end">
-        <button class="btn btn-secondary" type="button" onclick="exportCSV()">Export CSV</button>
-      </div>
-    </form>
+<script>
+function renderPayrollGroupedTable(data) {
+  let html = `<table class="payroll-group-table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Project</th>
+        <th>Worker</th>
+        <th>In</th>
+        <th>Out</th>
+        <th>Hours</th>
+        <th>OT</th>
+        <th>Rate</th>
+        <th>Amount</th>
+      </tr>
+    </thead>
+    <tbody>`;
 
-    <!-- Payroll Table -->
-    <div id="payroll-summary"></div>
-    <div id="payroll-table">
-      <table class="table payroll-table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Project</th>
-            <th>Worker</th>
-            <th>In</th>
-            <th>Out</th>
-            <th>Hours</th>
-            <th>OT</th>
-            <th>Rate</th>
-            <th>Amount</th>
-          </tr>
-        </thead>
-        <tbody id="payroll-table-body">
-          <!-- Rows will be inserted dynamically here -->
-        </tbody>
-      </table>
-    </div>
-  </div>
+  let currentGroupDate = "";
+  data.forEach(entry => {
+    html += "<tr>";
+    if (entry.date !== currentGroupDate) {
+      currentGroupDate = entry.date;
+      html += `<td class="payroll-date-cell">${entry.date}</td>`;
+    } else {
+      html += `<td class="payroll-date-cell"></td>`;
+    }
+    html += `
+      <td>${entry.project}</td>
+      <td>${entry.worker}</td>
+      <td>${entry.in}</td>
+      <td>${entry.out}</td>
+      <td>${entry.hours}</td>
+      <td>${entry.ot}</td>
+      <td>${entry.rate}</td>
+      <td>${entry.amount}</td>
+    </tr>`;
+  });
 
-  <script src="js/payroll.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  html += "</tbody></table>";
+  document.getElementById("payroll-table-grouped").innerHTML = html;
+}
+
+// Example data (should be replaced with server data)
+const payrollData = [
+  {date: "2025-06-13", project: "Hawthorne Trim", worker: "John", in: "7:00", out: "8:00", hours: 1, ot: 1, rate: 45, amount: 45},
+  {date: "2025-06-13", project: "Calado", worker: "Jack", in: "8:00", out: "13:00", hours: 5, ot: 1, rate: 45, amount: 225},
+  {date: "2025-06-13", project: "Hawthorne Trim", worker: "Jorge", in: "8:00", out: "10:00", hours: 2, ot: 1, rate: 45, amount: 90},
+  {date: "2025-06-15", project: "Calado", worker: "John", in: "10:00", out: "11:00", hours: 1, ot: 1, rate: 45, amount: 45},
+  {date: "2025-06-15", project: "Hawthorne Trim", worker: "Jack", in: "11:00", out: "12:00", hours: 1, ot: 1, rate: 45, amount: 45},
+  {date: "2025-06-15", project: "Hawthorne Trim", worker: "Lima", in: "12:00", out: "13:00", hours: 1, ot: 1, rate: 45, amount: 45},
+  {date: "2025-06-15", project: "Hawthorne Trim", worker: "John", in: "13:00", out: "14:00", hours: 1, ot: 1, rate: 45, amount: 45}
+];
+
+// On page load, render the grouped payroll table
+window.onload = function() {
+  renderPayrollGroupedTable(payrollData);
+};
+</script>
 </body>
 </html>
