@@ -25,8 +25,8 @@ async function getPayRate(worker_id) {
   return q.rows[0]?.rate || 0;
 }
 
-// GET /api/clock-entries (for admin)
-router.get('/api/clock-entries', async (req, res) => {
+// CHANGED: This route is now /entries (NOT /api/clock-entries)
+router.get('/entries', async (req, res) => {
   const q = await pool.query(`
     SELECT
       ce.*,
