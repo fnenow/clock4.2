@@ -1,7 +1,20 @@
+// --- CHANGES NOTED ---
+// [1] Added parseDateTime helper for "YYYY-MM-DD HH:MM:SS" format parsing
+// [2] Updated all date parsing to use parseDateTime
+// [3] Replaced isOvertimeSession logic with payroll-style overtime calculation (daily, per worker)
+// [4] Documented changes at each step
+
+// [1] Helper: Safe parse for "YYYY-MM-DD HH:MM:SS" strings
+function parseDateTime(str) {
+  if (!str) return null;
+  return new Date(str.replace(' ', 'T'));
+}
+
+// [2] Update all duration and date math to use parseDateTime
 function formatDuration(start, end) {
   if (!start) return '';
-  const startDate = new Date(start);
-  const endDate = end ? new Date(end) : new Date();
+  const startDate = parseDateTime(start);
+  const endDate = end ? parseDateTime(end) : new Date();
   const diffMs = endDate - startDate;
   if (diffMs < 0) return '';
   const h = Math.floor(diffMs / (1000 * 60 * 60));
@@ -12,8 +25,8 @@ function formatDuration(start, end) {
 // Returns duration in hours as a decimal
 function getDurationHours(start, end) {
   if (!start) return 0;
-  const startDate = new Date(start);
-  const endDate = end ? new Date(end) : new Date();
+  const startDate = parseDateTime(start);
+  const endDate = end ? parseDateTime(end) : new Date();
   const diffMs = endDate - startDate;
   if (diffMs < 0) return 0;
   return diffMs / (1000 * 60 * 60);
@@ -58,12 +71,40 @@ function getUnique(entries, field) {
   return Array.from(new Set(entries.map(e => e[field]))).filter(Boolean);
 }
 
-function isOvertimeSession(session) {
-  if (!session.clock_in || !session.clock_out) return false;
-  const start = new Date(session.clock_in);
-  const end = new Date(session.clock_out);
-  const duration = (end - start) / (1000 * 60 * 60);
-  return duration > 8; // >8 hours
+// [3] Payroll-style overtime logic: highlight any session (or part) that is over the 8th hour in a day for a worker
+function getOvertimeMap(sessions) {
+  // Group by worker and day
+  const dayMap = {};
+  function getDay(dateStr) { return dateStr ? dateStr.slice(0, 10) : ''; }
+  for (const s of sessions) {
+    if (!s.clock_in || !s.clock_out) continue;
+    const day = getDay(s.clock_in);
+    const key = `${s.worker_name}|${day}`;
+    if (!dayMap[key]) dayMap[key] = [];
+    dayMap[key].push({
+      session: s,
+      start: parseDateTime(s.clock_in),
+      end: parseDateTime(s.clock_out),
+      duration: getDurationHours(s.clock_in, s.clock_out)
+    });
+  }
+  // Set of session_ids that have overtime (even partial)
+  const overtimeSessionIds = new Set();
+  Object.values(dayMap).forEach(sessionList => {
+    sessionList.sort((a, b) => a.start - b.start);
+    let cumulative = 0;
+    for (const { session, duration } of sessionList) {
+      const prevCumulative = cumulative;
+      cumulative += duration;
+      // If any part of this session is after 8th hour, mark as overtime
+      if (prevCumulative >= 8) {
+        overtimeSessionIds.add(session.session_id);
+      } else if (cumulative > 8) {
+        overtimeSessionIds.add(session.session_id);
+      }
+    }
+  });
+  return overtimeSessionIds;
 }
 
 let allEntries = [];
@@ -77,6 +118,7 @@ let highlightOvertime = false;
 let durationInterval;
 
 async function loadData() {
+  // [NOTE] You may need to update this endpoint to /entries if the backend changed!
   const res = await fetch('/api/clock-entries');
   allEntries = await res.json();
   allSessions = getSessions(allEntries);
@@ -99,6 +141,7 @@ function populateFilters() {
   projectSel.innerHTML = '<option value="">All</option>' + projects.map(p => `<option>${p}</option>`).join('');
 }
 
+// [3] Use getOvertimeMap in renderSessions
 function renderSessions() {
   const tbody = document.querySelector('#sessionTable tbody');
   let filtered = allSessions.filter(s => {
@@ -110,8 +153,14 @@ function renderSessions() {
   });
   if (currentTab === 'open') filtered = filtered.filter(s => !s.clock_out);
   else if (currentTab === 'closed') filtered = filtered.filter(s => !!s.clock_out);
+
+  let overtimeSessionIds = new Set();
+  if (highlightOvertime) {
+    overtimeSessionIds = getOvertimeMap(filtered);
+  }
+
   tbody.innerHTML = filtered.map(s => {
-    const overtime = highlightOvertime && isOvertimeSession(s);
+    const overtime = highlightOvertime && overtimeSessionIds.has(s.session_id);
     return `
       <tr${overtime ? ' class="overtime"' : ''}>
         <td>${s.worker_name || ''}</td>
