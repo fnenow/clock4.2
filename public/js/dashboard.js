@@ -1,26 +1,44 @@
-// Helper: parse "YYYY-MM-DD HH:MM:SS"
-function parseDateTime(str) {
+// Helper: parse "YYYY-MM-DD HH:MM:SS" to { y, m, d, H, M, S }
+function parseYMDHMS(str) {
+  // Accepts "YYYY-MM-DD HH:MM:SS"
   if (!str) return null;
-  return new Date(str.replace(' ', 'T'));
+  const [date, time] = str.split(' ');
+  if (!date || !time) return null;
+  const [y, m, d] = date.split('-').map(Number);
+  const [H, M, S] = time.split(':').map(Number);
+  return { y, m, d, H, M, S };
 }
+
+// Calculate minutes since epoch for a "YYYY-MM-DD HH:MM:SS" string as local time
+function toMinutes(str) {
+  const p = parseYMDHMS(str);
+  if (!p) return NaN;
+  // Use Date(y, m-1, d, H, M, S) for local
+  return (
+    (new Date(p.y, p.m - 1, p.d, p.H, p.M, p.S).getTime()) / 60000
+  );
+}
+
+// Calculate duration in hours, using only JS string math (no DB/SQL parsing)
+function getDurationHours(start, end) {
+  if (!start || !end) return 0;
+  const min1 = toMinutes(start);
+  const min2 = toMinutes(end);
+  if (isNaN(min1) || isNaN(min2) || min2 < min1) return 0;
+  return (min2 - min1) / 60;
+}
+
 function formatDuration(start, end) {
-  if (!start) return '';
-  const startDate = parseDateTime(start);
-  const endDate = end ? parseDateTime(end) : new Date();
-  const diffMs = endDate - startDate;
-  if (diffMs < 0) return '';
-  const h = Math.floor(diffMs / (1000 * 60 * 60));
-  const m = Math.floor((diffMs / (1000 * 60)) % 60);
+  if (!start || !end) return '';
+  const min1 = toMinutes(start);
+  const min2 = toMinutes(end);
+  if (isNaN(min1) || isNaN(min2) || min2 < min1) return '';
+  const mins = min2 - min1;
+  const h = Math.floor(mins / 60);
+  const m = Math.floor(mins % 60);
   return `${h}h ${m}m`;
 }
-function getDurationHours(start, end) {
-  if (!start) return 0;
-  const startDate = parseDateTime(start);
-  const endDate = end ? parseDateTime(end) : new Date();
-  const diffMs = endDate - startDate;
-  if (diffMs < 0) return 0;
-  return diffMs / (1000 * 60 * 60);
-}
+
 function getUnique(entries, field) {
   return Array.from(new Set(entries.map(e => e[field]))).filter(Boolean);
 }
@@ -65,15 +83,15 @@ function getSessions(entries) {
     grouped[key].push(s);
   }
   // Sort sessions per group by clock_in
-  Object.values(grouped).forEach(arr => arr.sort((a, b) => parseDateTime(a.clock_in) - parseDateTime(b.clock_in)));
+  Object.values(grouped).forEach(arr => arr.sort((a, b) => toMinutes(a.clock_in) - toMinutes(b.clock_in)));
   // Now split last session if needed
   let sessions = [];
   for (const [key, daySessions] of Object.entries(grouped)) {
     let totalHours = 0;
     for (let i = 0; i < daySessions.length; ++i) {
       const s = daySessions[i];
-      const start = parseDateTime(s.clock_in);
-      const end = parseDateTime(s.clock_out);
+      const startMin = toMinutes(s.clock_in);
+      const endMin = toMinutes(s.clock_out);
       const duration = getDurationHours(s.clock_in, s.clock_out);
       // Last session of the day
       if (i === daySessions.length - 1 && totalHours + duration > 8) {
@@ -81,12 +99,16 @@ function getSessions(entries) {
         const overtimeHours = duration - regularLeft;
         if (regularLeft > 0) {
           // Regular part
-          const regEnd = new Date(start.getTime() + regularLeft * 3600 * 1000);
+          const regEndMin = startMin + regularLeft * 60;
+          const regEndDt = new Date(regEndMin * 60000);
+          const regEnd =
+            `${regEndDt.getFullYear()}-${String(regEndDt.getMonth() + 1).padStart(2, '0')}-${String(regEndDt.getDate()).padStart(2, '0')} ` +
+            `${String(regEndDt.getHours()).padStart(2, '0')}:${String(regEndDt.getMinutes()).padStart(2, '0')}:${String(regEndDt.getSeconds()).padStart(2, '0')}`;
           sessions.push({
             ...s,
             clock_in: s.clock_in,
-            clock_out: regEnd.toISOString().slice(0, 19).replace('T', ' '),
-            duration: formatDuration(s.clock_in, regEnd.toISOString().slice(0, 19).replace('T', ' ')),
+            clock_out: regEnd,
+            duration: formatDuration(s.clock_in, regEnd),
             durationHours: regularLeft,
             amount: s.pay_rate * regularLeft,
             isOvertime: false,
@@ -94,12 +116,16 @@ function getSessions(entries) {
           });
         }
         // Overtime part
-        const otStart = new Date(start.getTime() + regularLeft * 3600 * 1000);
+        const otStartMin = startMin + regularLeft * 60;
+        const otStartDt = new Date(otStartMin * 60000);
+        const otStart =
+          `${otStartDt.getFullYear()}-${String(otStartDt.getMonth() + 1).padStart(2, '0')}-${String(otStartDt.getDate()).padStart(2, '0')} ` +
+          `${String(otStartDt.getHours()).padStart(2, '0')}:${String(otStartDt.getMinutes()).padStart(2, '0')}:${String(otStartDt.getSeconds()).padStart(2, '0')}`;
         sessions.push({
           ...s,
-          clock_in: otStart.toISOString().slice(0, 19).replace('T', ' '),
+          clock_in: otStart,
           clock_out: s.clock_out,
-          duration: formatDuration(otStart.toISOString().slice(0, 19).replace('T', ' '), s.clock_out),
+          duration: formatDuration(otStart, s.clock_out),
           durationHours: overtimeHours,
           amount: s.pay_rate * 1.5 * overtimeHours,
           isOvertime: true,
@@ -127,8 +153,8 @@ function getSessions(entries) {
     if (!s.clock_out) {
       sessions.push({
         ...s,
-        duration: formatDuration(s.clock_in, ''),
-        durationHours: getDurationHours(s.clock_in, ''),
+        duration: '', // Can't display open session duration without an end
+        durationHours: 0,
         amount: '',
         isOvertime: false,
         ot_split: false
@@ -138,7 +164,8 @@ function getSessions(entries) {
   return sessions;
 }
 
-// All other code from your original (unchanged, but now sessions may be split)
+// --- (all other code unchanged, using getSessions, formatDuration, getDurationHours) ---
+
 let allEntries = [];
 let allSessions = [];
 let filterWorker = '';
