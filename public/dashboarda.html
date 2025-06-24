@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Session Dashboard</title>
+  <style>
+    /* (1) Sidebar & Layout styles */
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f8f9fa;
+    }
+    .admin-container { display: flex; min-height: 100vh; }
+    .admin-sidebar {
+      width: 120px; /* old: 220 */
+      background: #222;
+      color: #fff;
+      padding: 2rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .admin-sidebar h2 { margin-bottom: 1rem; }
+    .admin-sidebar a {
+      color: #fff;
+      text-decoration: none;
+      margin-bottom: 0.7em;
+      padding: 0.4em 0.8em;
+      border-radius: 4px;
+      display: block;
+      font-weight: 500;
+    }
+    .admin-sidebar a.active, .admin-sidebar a:hover {
+      background: #1976d2;
+    }
+    .admin-sidebar hr {
+      border: none;
+      border-top: 1px solid #555;
+      margin: 1.5em 0;
+    }
+    .admin-main-content {
+      flex: 1;
+      padding: 2.5rem 2rem;
+      background: #f8f9fa;
+      min-height: 100vh;
+    }
+    .logout-btn, #adminLogoutBtn {
+      background: #e53935;
+      color: #fff;
+      font-weight: bold;
+      border: none;
+      border-radius: 4px;
+      padding: 0.6em 1.2em;
+      cursor: pointer;
+      margin-top: 2em;
+      display: inline-block;
+    }
+    /* OVERTIME HIGHLIGHT FIX */
+    .overtime {
+      background: #fff3cd !important;
+    }
+    @media (max-width: 700px) {
+      .admin-container { flex-direction: column; }
+      .admin-sidebar { width: 100%; flex-direction: row; gap: 0.7rem; padding: 1rem; }
+      .admin-main-content { padding: 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="admin-container">
+    <!-- (2) Sidebar navigation -->
+    <aside class="admin-sidebar">
+            <h2>Admin Menu</h2>
+            <a href="admin.html"/* class="active"*/>Dashboard1</a>
+            <a href="dashboard.html">Dashboard</a>
+            <a href="payrate_admin.html">Pay Rate</a>
+            <a href="payroll2.html">Payroll</a>
+            <a href="project_admin.html">Project</a>
+            <a href="worker_admin.html">Worker</a>
+      <hr>
+      <a href="#" id="adminLogoutBtn">Logout</a>
+    </aside>
+    <!-- (3) Main content area -->
+    <main class="admin-main-content">
+      <h1>Session Dashboard</h1>
+      <div class="filters">
+        Worker:
+        <select id="filterWorker"></select>
+        Project:
+        <select id="filterProject"></select>
+        Date:
+        <input type="date" id="filterStartDate"> to
+        <input type="date" id="filterEndDate">
+      </div>
+      <div class="filters" style="margin-top: 12px;">
+        <span>
+          <span class="tab selected" id="tabOpen">Open Sessions</span>
+          <span class="tab" id="tabClosed">Closed Sessions</span>
+          <span class="tab" id="tabAll">All Sessions</span>
+        </span>
+        <label style="margin-left:20px;">
+          <input type="checkbox" id="highlightOvertime"> Highlight Overtime Days
+        </label>
+        <button id="exportCSV" style="float:right;">Export CSV</button>
+      </div>
+      <table id="sessionTable">
+        <thead>
+          <tr>
+            <th>Worker</th>
+            <th>Project</th>
+            <th>Clock-in (local)</th>
+            <th>Clock-out (local)</th>
+            <th>Duration</th>
+            <th>Amount</th>
+            <th>Note In</th>
+            <th>Note Out</th>
+            <th>Pay Rate</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <script src="/js/dashboard.js"></script>
+    </main>
+  </div>
+</body>
+</html>
