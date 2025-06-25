@@ -1,57 +1,88 @@
-function formatDuration(start, end) {
-  if (!start) return '';
-  const startDate = new Date(start);
-  const endDate = end ? new Date(end) : new Date();
-  const diffMs = endDate - startDate;
-  if (diffMs < 0) return '';
-  const h = Math.floor(diffMs / (1000 * 60 * 60));
-  const m = Math.floor((diffMs / (1000 * 60)) % 60);
+function getDurationHours(startStr, endStr) {
+  if (!startStr || !endStr) return 0;
+
+  const [startDate, startTime] = startStr.split(' ');
+  const [endDate, endTime] = endStr.split(' ');
+
+  const [sy, sm, sd] = startDate.split('-').map(Number);
+  const [sh, smin] = startTime.split(':').map(Number);
+
+  const [ey, em, ed] = endDate.split('-').map(Number);
+  const [eh, emin] = endTime.split(':').map(Number);
+
+  const start = new Date(sy, sm - 1, sd, sh, smin);
+  const end = new Date(ey, em - 1, ed, eh, emin);
+
+  const ms = end - start;
+  return ms > 0 ? ms / (1000 * 60 * 60) : 0;
+}
+
+function formatDuration(startStr, endStr) {
+  if (!startStr || !endStr) return '';
+  const duration = getDurationHours(startStr, endStr);
+  const h = Math.floor(duration);
+  const m = Math.round((duration - h) * 60);
   return `${h}h ${m}m`;
 }
 
-// Returns duration in hours as a decimal
-function getDurationHours(start, end) {
-  if (!start) return 0;
-  const startDate = new Date(start);
-  const endDate = end ? new Date(end) : new Date();
-  const diffMs = endDate - startDate;
-  if (diffMs < 0) return 0;
-  return diffMs / (1000 * 60 * 60);
-}
-
 function getSessions(entries) {
-  // Pair by session_id
   const bySession = {};
   for (const e of entries) {
     if (!bySession[e.session_id]) bySession[e.session_id] = {};
     bySession[e.session_id][e.action] = e;
   }
-  const sessions = [];
+
+  const allSessions = [];
   for (const [session_id, pair] of Object.entries(bySession)) {
     const inEntry = pair.in;
     const outEntry = pair.out;
-    const durationHours = inEntry ? getDurationHours(inEntry.datetime_local, outEntry?.datetime_local) : 0;
-    const payRate = inEntry?.pay_rate || outEntry?.pay_rate || 0;
-    const amount = payRate && durationHours ? (payRate * durationHours) : 0;
-    sessions.push({
+    const clockIn = inEntry?.datetime_local || '';
+    const clockOut = outEntry?.datetime_local || '';
+    const durationHours = clockIn && clockOut ? getDurationHours(clockIn, clockOut) : 0;
+    const payRate = parseFloat(inEntry?.pay_rate || outEntry?.pay_rate || 0);
+    allSessions.push({
       session_id,
       worker_id: inEntry?.worker_id || outEntry?.worker_id,
       worker_name: inEntry?.worker_name || outEntry?.worker_name,
       project_id: inEntry?.project_id || outEntry?.project_id,
       project_name: inEntry?.project_name || outEntry?.project_name,
-      clock_in: inEntry?.datetime_local || '',
-      clock_out: outEntry?.datetime_local || '',
-      duration: inEntry ? formatDuration(inEntry.datetime_local, outEntry?.datetime_local) : '',
+      clock_in: clockIn,
+      clock_out: clockOut,
+      duration: formatDuration(clockIn, clockOut),
       durationHours,
-      amount,
+      pay_rate: payRate,
       note_in: inEntry?.note || '',
       note_out: outEntry?.note || '',
-      pay_rate: payRate,
       id_in: inEntry?.id,
-      id_out: outEntry?.id
+      id_out: outEntry?.id,
+      amount: 0
     });
   }
-  return sessions;
+
+  // Group by worker + day
+  const grouped = {};
+  for (const s of allSessions) {
+    if (!s.clock_in) continue;
+    const dayKey = `${s.worker_id}_${s.clock_in.slice(0, 10)}`; // yyyy-mm-dd
+    if (!grouped[dayKey]) grouped[dayKey] = [];
+    grouped[dayKey].push(s);
+  }
+
+  const result = [];
+  for (const group of Object.values(grouped)) {
+    group.sort((a, b) => getDurationHours(a.clock_in, b.clock_in));
+    let dayTotal = 0;
+    for (const s of group) {
+      const regAvailable = Math.max(0, 8 - dayTotal);
+      const regHours = Math.min(s.durationHours, regAvailable);
+      const otHours = Math.max(0, s.durationHours - regHours);
+      s.amount = (regHours * s.pay_rate) + (otHours * s.pay_rate * 1.5);
+      dayTotal += s.durationHours;
+      result.push(s);
+    }
+  }
+
+  return result;
 }
 
 function getUnique(entries, field) {
@@ -59,11 +90,7 @@ function getUnique(entries, field) {
 }
 
 function isOvertimeSession(session) {
-  if (!session.clock_in || !session.clock_out) return false;
-  const start = new Date(session.clock_in);
-  const end = new Date(session.clock_out);
-  const duration = (end - start) / (1000 * 60 * 60);
-  return duration > 8; // >8 hours
+  return session.durationHours > 8;
 }
 
 let allEntries = [];
@@ -87,7 +114,7 @@ async function loadData() {
   durationInterval = setInterval(() => {
     allSessions = getSessions(allEntries);
     renderSessions();
-  }, 60000); // update every minute
+  }, 60000);
 }
 
 function populateFilters() {
@@ -110,32 +137,21 @@ function renderSessions() {
   });
   if (currentTab === 'open') filtered = filtered.filter(s => !s.clock_out);
   else if (currentTab === 'closed') filtered = filtered.filter(s => !!s.clock_out);
+
   tbody.innerHTML = filtered.map(s => {
     const overtime = highlightOvertime && isOvertimeSession(s);
     return `
       <tr${overtime ? ' class="overtime"' : ''}>
         <td>${s.worker_name || ''}</td>
-        <td>
-          <span class="editable" data-type="project" data-session="${s.session_id}" contenteditable>${s.project_name || ''}</span>
-        </td>
-        <td>
-          <span class="editable" data-type="clock_in" data-session="${s.session_id}" contenteditable>${s.clock_in || ''}</span>
-        </td>
-        <td>
-          <span class="editable" data-type="clock_out" data-session="${s.session_id}" contenteditable>${s.clock_out || ''}</span>
-        </td>
+        <td><span class="editable" data-type="project" data-session="${s.session_id}" contenteditable>${s.project_name || ''}</span></td>
+        <td><span class="editable" data-type="clock_in" data-session="${s.session_id}" contenteditable>${s.clock_in || ''}</span></td>
+        <td><span class="editable" data-type="clock_out" data-session="${s.session_id}" contenteditable>${s.clock_out || ''}</span></td>
         <td>${s.duration || ''}</td>
         <td>${s.amount ? `$${s.amount.toFixed(2)}` : ''}</td>
-        <td>
-          <span class="editable" data-type="note_in" data-session="${s.session_id}" contenteditable>${s.note_in || ''}</span>
-        </td>
-        <td>
-          <span class="editable" data-type="note_out" data-session="${s.session_id}" contenteditable>${s.note_out || ''}</span>
-        </td>
+        <td><span class="editable" data-type="note_in" data-session="${s.session_id}" contenteditable>${s.note_in || ''}</span></td>
+        <td><span class="editable" data-type="note_out" data-session="${s.session_id}" contenteditable>${s.note_out || ''}</span></td>
         <td>${s.pay_rate ? `$${parseFloat(s.pay_rate).toFixed(2)}` : ''}</td>
-        <td>
-          ${!s.clock_out ? `<button onclick="forceClockOut('${s.id_in}')">Force Clock-Out</button>` : ''}
-        </td>
+        <td>${!s.clock_out ? `<button onclick="forceClockOut('${s.id_in}')">Force Clock-Out</button>` : ''}</td>
       </tr>
     `;
   }).join('');
@@ -151,12 +167,10 @@ async function handleInlineEdit(e) {
   const sessionId = span.getAttribute('data-session');
   const session = allSessions.find(s => s.session_id === sessionId);
   if (!session) return;
-  // Patch backend for changed value
+
   if (type === 'project') {
-    if (session.id_in)
-      await patchEntry(session.id_in, { project_name: newValue });
-    if (session.id_out)
-      await patchEntry(session.id_out, { project_name: newValue });
+    if (session.id_in) await patchEntry(session.id_in, { project_name: newValue });
+    if (session.id_out) await patchEntry(session.id_out, { project_name: newValue });
   } else if (type === 'clock_in' && session.id_in) {
     await patchEntry(session.id_in, { datetime_local: newValue });
   } else if (type === 'clock_out' && session.id_out) {
@@ -166,6 +180,7 @@ async function handleInlineEdit(e) {
   } else if (type === 'note_out' && session.id_out) {
     await patchEntry(session.id_out, { note: newValue });
   }
+
   await loadData();
 }
 
@@ -221,15 +236,11 @@ function updateTabs() {
 async function forceClockOut(id_in) {
   if (!confirm("Force clock out now?")) return;
   const res = await fetch(`/api/clock-entries/${id_in}/force-clock-out`, { method: 'POST' });
-  if (res.ok) {
-    await loadData();
-  } else {
-    alert("Failed to force clock out");
-  }
+  if (res.ok) await loadData();
+  else alert("Failed to force clock out");
 }
 window.forceClockOut = forceClockOut;
 
-// CSV export
 document.getElementById('exportCSV').addEventListener('click', () => {
   let csv = "Worker,Project,Clock-in,Clock-out,Duration,Amount,Note In,Note Out,Pay Rate\n";
   allSessions.forEach(s => {
