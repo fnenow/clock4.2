@@ -55,6 +55,12 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'timeclock.html'));
 });
 
+// Add this before your 404 handler
+app.post('/api/clock-entries/:id/force-clock-out', (req, res, next) => {
+  req.url = '/force-clock-out-by-entry/' + req.params.id;
+  clockRoutes(req, res, next);
+});
+
 app.use((req, res) => {
   res.status(404).send('404 Not Found');
 });
