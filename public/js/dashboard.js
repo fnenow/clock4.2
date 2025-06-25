@@ -1,4 +1,5 @@
-// === Modified dashboard.js fixes ===
+// === Full updated dashboard.js with fixed data loading ===
+
 function formatDuration(start, end) {
   if (!start) return '';
   const startDate = new Date(start.replace(' ', 'T'));
@@ -91,8 +92,131 @@ function renderSessions() {
   });
 }
 
+async function loadData() {
+  try {
+    const res = await fetch('/api/clock-entries');
+    const data = await res.json();
+    allEntries = data;
+    allSessions = getSessions(allEntries);
+    populateFilters();
+    renderSessions();
+  } catch (err) {
+    console.error("loadData failed:", err);
+  }
+}
+
+function populateFilters() {
+  const workerSel = document.getElementById('filterWorker');
+  const projectSel = document.getElementById('filterProject');
+  const workers = getUnique(allEntries, 'worker_name');
+  const projects = getUnique(allEntries, 'project_name');
+  workerSel.innerHTML = '<option value="">All</option>' + workers.map(w => `<option>${w}</option>`).join('');
+  projectSel.innerHTML = '<option value="">All</option>' + projects.map(p => `<option>${p}</option>`).join('');
+}
+
+function getUnique(entries, field) {
+  return Array.from(new Set(entries.map(e => e[field]))).filter(Boolean);
+}
+
+// Event bindings
 const otCheckbox = document.getElementById('highlightOvertime');
 otCheckbox.addEventListener('change', e => {
   highlightOvertime = e.target.checked;
   renderSessions();
 });
+
+document.getElementById('filterWorker').addEventListener('change', e => {
+  filterWorker = e.target.value;
+  renderSessions();
+});
+
+document.getElementById('filterProject').addEventListener('change', e => {
+  filterProject = e.target.value;
+  renderSessions();
+});
+
+document.getElementById('filterStartDate').addEventListener('change', e => {
+  filterStartDate = e.target.value;
+  renderSessions();
+});
+
+document.getElementById('filterEndDate').addEventListener('change', e => {
+  filterEndDate = e.target.value;
+  renderSessions();
+});
+
+document.getElementById('tabOpen').addEventListener('click', () => {
+  currentTab = 'open';
+  updateTabs();
+  renderSessions();
+});
+
+document.getElementById('tabClosed').addEventListener('click', () => {
+  currentTab = 'closed';
+  updateTabs();
+  renderSessions();
+});
+
+document.getElementById('tabAll').addEventListener('click', () => {
+  currentTab = 'all';
+  updateTabs();
+  renderSessions();
+});
+
+function updateTabs() {
+  document.getElementById('tabOpen').classList.toggle('selected', currentTab === 'open');
+  document.getElementById('tabClosed').classList.toggle('selected', currentTab === 'closed');
+  document.getElementById('tabAll').classList.toggle('selected', currentTab === 'all');
+}
+
+async function handleInlineEdit(e) {
+  const span = e.target;
+  const newValue = span.innerText.trim();
+  const type = span.getAttribute('data-type');
+  const sessionId = span.getAttribute('data-session');
+  const session = allSessions.find(s => s.session_id === sessionId);
+  if (!session) return;
+
+  if (type === 'project') {
+    if (session.id_in) await patchEntry(session.id_in, { project_name: newValue });
+    if (session.id_out) await patchEntry(session.id_out, { project_name: newValue });
+  } else if (type === 'clock_in' && session.id_in) {
+    await patchEntry(session.id_in, { datetime_local: newValue });
+  } else if (type === 'clock_out' && session.id_out) {
+    await patchEntry(session.id_out, { datetime_local: newValue });
+  } else if (type === 'note_in' && session.id_in) {
+    await patchEntry(session.id_in, { note: newValue });
+  } else if (type === 'note_out' && session.id_out) {
+    await patchEntry(session.id_out, { note: newValue });
+  }
+  await loadData();
+}
+
+async function patchEntry(id, body) {
+  await fetch(`/api/clock-entries/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+}
+
+async function forceClockOut(id_in) {
+  if (!confirm("Force clock out now?")) return;
+  const res = await fetch(`/api/clock-entries/${id_in}/force-clock-out`, { method: 'POST' });
+  if (res.ok) await loadData();
+  else alert("Failed to force clock out");
+}
+window.forceClockOut = forceClockOut;
+
+// Globals
+let allEntries = [];
+let allSessions = [];
+let filterWorker = '';
+let filterProject = '';
+let filterStartDate = '';
+let filterEndDate = '';
+let currentTab = 'open';
+let highlightOvertime = false;
+
+// Initial load
+loadData();
