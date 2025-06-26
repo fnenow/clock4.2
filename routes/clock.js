@@ -131,20 +131,19 @@ router.post('/out', async (req, res) => {
   }
 });
 
-// Force clock out by clock entry id (id of 'in' entry)
-router.post('/force-clock-out-by-entry/:id', async (req, res) => {
-  const { id } = req.params;
+// Force clock out by session_id (using the session_id string)
+router.post('/force-clock-out-by-session/:session_id', async (req, res) => {
+  const { session_id } = req.params;
   try {
-    // Find the "in" entry
-    const q = await pool.query('SELECT * FROM clock_entries WHERE id = $1', [id]);
-    if (!q.rows.length) return res.status(404).send('Entry not found');
+    // Find the "in" entry for this session
+    const q = await pool.query('SELECT * FROM clock_entries WHERE session_id = $1 AND action = $2', [session_id, 'in']);
+    if (!q.rows.length) return res.status(404).send('Session not found');
     const entry = q.rows[0];
-    if (entry.action !== 'in') return res.status(400).send('Not a clock-in entry');
 
     // Check if already clocked out
     const outQ = await pool.query(
       'SELECT * FROM clock_entries WHERE session_id = $1 AND action = $2',
-      [entry.session_id, 'out']
+      [session_id, 'out']
     );
     if (outQ.rows.length) return res.status(400).send('Already clocked out');
 
@@ -177,6 +176,52 @@ router.post('/force-clock-out-by-entry/:id', async (req, res) => {
     res.status(500).send('Server error');
   }
 });
+// Force clock out by clock entry id (id of 'in' entry)
+//router.post('/force-clock-out-by-entry/:id', async (req, res) => {
+//  const { id } = req.params;
+//  try {
+//    // Find the "in" entry
+//    const q = await pool.query('SELECT * FROM clock_entries WHERE id = $1', [id]);
+//    if (!q.rows.length) return res.status(404).send('Entry not found');
+//    const entry = q.rows[0];
+//    if (entry.action !== 'in') return res.status(400).send('Not a clock-in entry');
+
+    // Check if already clocked out
+//    const outQ = await pool.query(
+//      'SELECT * FROM clock_entries WHERE session_id = $1 AND action = $2',
+//      [entry.session_id, 'out']
+//    );
+//    if (outQ.rows.length) return res.status(400).send('Already clocked out');
+
+    // Insert forced clock-out entry
+//    const now = new Date();
+//    now.setSeconds(0, 0);
+//    const pad = n => n < 10 ? '0' + n : n;
+//    const datetime_utc = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+//    const localTime = new Date(now.getTime() + (entry.timezone_offset * 60 * 1000));
+//    const datetime_local = `${localTime.getFullYear()}-${pad(localTime.getMonth() + 1)}-${pad(localTime.getDate())} ${pad(localTime.getHours())}:${pad(localTime.getMinutes())}`;
+
+//    await pool.query(`
+//      INSERT INTO clock_entries
+//        (worker_id, project_id, action, datetime_utc, datetime_local, session_id, pay_rate, note, timezone_offset)
+//      VALUES
+//        ($1, $2, 'out', $3, $4, $5, $6, $7, $8)
+//    `, [
+//      entry.worker_id,
+//      entry.project_id,
+//      datetime_utc,
+//      datetime_local,
+//      entry.session_id,
+//      entry.pay_rate,
+//      '[forced clock-out]',
+//      entry.timezone_offset
+//    ]);
+//    res.sendStatus(200);
+//  } catch (e) {
+//    console.error('Error forcing clock-out:', e);
+//    res.status(500).send('Server error');
+//  }
+//});
 
 // GET CURRENT CLOCK STATUS
 router.get('/status/:worker_id', async (req, res) => {
