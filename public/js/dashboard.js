@@ -82,7 +82,7 @@ function renderSessions() {
         <td><span class="editable" data-type="note_in" data-session="${s.session_id}" contenteditable>${s.note_in || ''}</span></td>
         <td><span class="editable" data-type="note_out" data-session="${s.session_id}" contenteditable>${s.note_out || ''}</span></td>
         <td>${s.pay_rate ? `$${s.pay_rate.toFixed(2)}` : ''} ($${s.total_pay})</td>
-        <td>${!s.clock_out ? `<button onclick="forceClockOut('${s.id_in}')">Force Clock-Out</button>` : ''}</td>
+        <td>${!s.clock_out ? `<button onclick="forceClockOut('${s.session_id}')">Force Clock-Out</button>` : ''}</td>
       </tr>
     `;
   }).join('');
@@ -200,13 +200,20 @@ async function patchEntry(id, body) {
   });
 }
 
-async function forceClockOut(id_in) {
+async function forceClockOut(session_id) {
   if (!confirm("Force clock out now?")) return;
-  const res = await fetch(`/api/clock-entries/${id_in}/force-clock-out`, { method: 'POST' });
+  const res = await fetch(`/api/clock-entries/${session_id}/force-clock-out`, { method: 'POST' });
   if (res.ok) await loadData();
   else alert("Failed to force clock out");
 }
-window.forceClockOut = forceClockOut;
+//window.forceClockOut = forceClockOut;
+//async function forceClockOut(id_in) {
+//  if (!confirm("Force clock out now?")) return;
+//  const res = await fetch(`/api/clock-entries/${id_in}/force-clock-out`, { method: 'POST' });
+//  if (res.ok) await loadData();
+//  else alert("Failed to force clock out");
+//}
+//window.forceClockOut = forceClockOut;
 
 // Globals
 let allEntries = [];
