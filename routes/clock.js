@@ -132,7 +132,7 @@ router.post('/out', async (req, res) => {
 });
 
 // POST /api/clock-entries/:id/force-clock-out
-router.post('/force-clock-out-by-entry/:id', async (req, res) => {
+router.post('/api/clock-entries/:id/force-clock-out', async (req, res) => {
   const id = req.params.id;
   try {
     // Find the original "in" entry to get worker, project, session, pay_rate, and timezone_offset
