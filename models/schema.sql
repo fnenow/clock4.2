@@ -21,7 +21,7 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
--- Name: admin_users; Type: TABLE; Schema: public; Owner: postgres
+-- Name: admin_users; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.admin_users (
@@ -32,10 +32,8 @@ CREATE TABLE public.admin_users (
 );
 
 
-ALTER TABLE public.admin_users OWNER TO postgres;
-
 --
--- Name: admin_users_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+-- Name: admin_users_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
 CREATE SEQUENCE public.admin_users_id_seq
@@ -47,17 +45,15 @@ CREATE SEQUENCE public.admin_users_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.admin_users_id_seq OWNER TO postgres;
-
 --
--- Name: admin_users_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+-- Name: admin_users_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
 ALTER SEQUENCE public.admin_users_id_seq OWNED BY public.admin_users.id;
 
 
 --
--- Name: clock_entries; Type: TABLE; Schema: public; Owner: postgres
+-- Name: clock_entries; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.clock_entries (
@@ -81,14 +77,12 @@ CREATE TABLE public.clock_entries (
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
     session_id uuid,
     timezone_offset integer,
-    CONSTRAINT clock_entries_action_check CHECK (((action)::text = ANY ((ARRAY['in'::character varying, 'out'::character varying])::text[])))
+    CONSTRAINT clock_entries_action_check CHECK (((action)::text = ANY (ARRAY[('in'::character varying)::text, ('out'::character varying)::text])))
 );
 
 
-ALTER TABLE public.clock_entries OWNER TO postgres;
-
 --
--- Name: clock_entries_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+-- Name: clock_entries_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
 CREATE SEQUENCE public.clock_entries_id_seq
@@ -100,17 +94,15 @@ CREATE SEQUENCE public.clock_entries_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.clock_entries_id_seq OWNER TO postgres;
-
 --
--- Name: clock_entries_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+-- Name: clock_entries_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
 ALTER SEQUENCE public.clock_entries_id_seq OWNED BY public.clock_entries.id;
 
 
 --
--- Name: pay_rates; Type: TABLE; Schema: public; Owner: postgres
+-- Name: pay_rates; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.pay_rates (
@@ -122,10 +114,8 @@ CREATE TABLE public.pay_rates (
 );
 
 
-ALTER TABLE public.pay_rates OWNER TO postgres;
-
 --
--- Name: pay_rates_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+-- Name: pay_rates_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
 CREATE SEQUENCE public.pay_rates_id_seq
@@ -137,17 +127,15 @@ CREATE SEQUENCE public.pay_rates_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.pay_rates_id_seq OWNER TO postgres;
-
 --
--- Name: pay_rates_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+-- Name: pay_rates_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
 ALTER SEQUENCE public.pay_rates_id_seq OWNED BY public.pay_rates.id;
 
 
 --
--- Name: project_workers; Type: TABLE; Schema: public; Owner: postgres
+-- Name: project_workers; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.project_workers (
@@ -157,10 +145,8 @@ CREATE TABLE public.project_workers (
 );
 
 
-ALTER TABLE public.project_workers OWNER TO postgres;
-
 --
--- Name: project_workers_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+-- Name: project_workers_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
 CREATE SEQUENCE public.project_workers_id_seq
@@ -172,17 +158,15 @@ CREATE SEQUENCE public.project_workers_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.project_workers_id_seq OWNER TO postgres;
-
 --
--- Name: project_workers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+-- Name: project_workers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
 ALTER SEQUENCE public.project_workers_id_seq OWNED BY public.project_workers.id;
 
 
 --
--- Name: projects; Type: TABLE; Schema: public; Owner: postgres
+-- Name: projects; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.projects (
@@ -197,10 +181,8 @@ CREATE TABLE public.projects (
 );
 
 
-ALTER TABLE public.projects OWNER TO postgres;
-
 --
--- Name: projects_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+-- Name: projects_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
 CREATE SEQUENCE public.projects_id_seq
@@ -212,17 +194,15 @@ CREATE SEQUENCE public.projects_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.projects_id_seq OWNER TO postgres;
-
 --
--- Name: projects_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+-- Name: projects_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
 ALTER SEQUENCE public.projects_id_seq OWNED BY public.projects.id;
 
 
 --
--- Name: session; Type: TABLE; Schema: public; Owner: postgres
+-- Name: session; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.session (
@@ -232,10 +212,8 @@ CREATE TABLE public.session (
 );
 
 
-ALTER TABLE public.session OWNER TO postgres;
-
 --
--- Name: workers; Type: TABLE; Schema: public; Owner: postgres
+-- Name: workers; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.workers (
@@ -252,10 +230,8 @@ CREATE TABLE public.workers (
 );
 
 
-ALTER TABLE public.workers OWNER TO postgres;
-
 --
--- Name: workers_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+-- Name: workers_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
 CREATE SEQUENCE public.workers_id_seq
@@ -267,59 +243,57 @@ CREATE SEQUENCE public.workers_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.workers_id_seq OWNER TO postgres;
-
 --
--- Name: workers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+-- Name: workers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
 ALTER SEQUENCE public.workers_id_seq OWNED BY public.workers.id;
 
 
 --
--- Name: admin_users id; Type: DEFAULT; Schema: public; Owner: postgres
+-- Name: admin_users id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.admin_users ALTER COLUMN id SET DEFAULT nextval('public.admin_users_id_seq'::regclass);
 
 
 --
--- Name: clock_entries id; Type: DEFAULT; Schema: public; Owner: postgres
+-- Name: clock_entries id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.clock_entries ALTER COLUMN id SET DEFAULT nextval('public.clock_entries_id_seq'::regclass);
 
 
 --
--- Name: pay_rates id; Type: DEFAULT; Schema: public; Owner: postgres
+-- Name: pay_rates id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.pay_rates ALTER COLUMN id SET DEFAULT nextval('public.pay_rates_id_seq'::regclass);
 
 
 --
--- Name: project_workers id; Type: DEFAULT; Schema: public; Owner: postgres
+-- Name: project_workers id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.project_workers ALTER COLUMN id SET DEFAULT nextval('public.project_workers_id_seq'::regclass);
 
 
 --
--- Name: projects id; Type: DEFAULT; Schema: public; Owner: postgres
+-- Name: projects id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.projects ALTER COLUMN id SET DEFAULT nextval('public.projects_id_seq'::regclass);
 
 
 --
--- Name: workers id; Type: DEFAULT; Schema: public; Owner: postgres
+-- Name: workers id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.workers ALTER COLUMN id SET DEFAULT nextval('public.workers_id_seq'::regclass);
 
 
 --
--- Name: admin_users admin_users_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: admin_users admin_users_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.admin_users
@@ -327,7 +301,7 @@ ALTER TABLE ONLY public.admin_users
 
 
 --
--- Name: admin_users admin_users_username_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: admin_users admin_users_username_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.admin_users
@@ -335,7 +309,7 @@ ALTER TABLE ONLY public.admin_users
 
 
 --
--- Name: clock_entries clock_entries_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: clock_entries clock_entries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.clock_entries
@@ -343,7 +317,7 @@ ALTER TABLE ONLY public.clock_entries
 
 
 --
--- Name: pay_rates pay_rates_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: pay_rates pay_rates_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.pay_rates
@@ -351,7 +325,7 @@ ALTER TABLE ONLY public.pay_rates
 
 
 --
--- Name: project_workers project_workers_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: project_workers project_workers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.project_workers
@@ -359,7 +333,7 @@ ALTER TABLE ONLY public.project_workers
 
 
 --
--- Name: projects projects_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: projects projects_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.projects
@@ -367,7 +341,7 @@ ALTER TABLE ONLY public.projects
 
 
 --
--- Name: session session_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: session session_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.session
@@ -375,7 +349,7 @@ ALTER TABLE ONLY public.session
 
 
 --
--- Name: workers workers_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: workers workers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.workers
@@ -383,7 +357,7 @@ ALTER TABLE ONLY public.workers
 
 
 --
--- Name: workers workers_worker_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: workers workers_worker_id_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.workers
@@ -391,14 +365,14 @@ ALTER TABLE ONLY public.workers
 
 
 --
--- Name: IDX_session_expire; Type: INDEX; Schema: public; Owner: postgres
+-- Name: IDX_session_expire; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX "IDX_session_expire" ON public.session USING btree (expire);
 
 
 --
--- Name: clock_entries clock_entries_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: clock_entries clock_entries_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.clock_entries
@@ -406,7 +380,7 @@ ALTER TABLE ONLY public.clock_entries
 
 
 --
--- Name: clock_entries clock_entries_worker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: clock_entries clock_entries_worker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.clock_entries
@@ -414,7 +388,7 @@ ALTER TABLE ONLY public.clock_entries
 
 
 --
--- Name: pay_rates pay_rates_worker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: pay_rates pay_rates_worker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.pay_rates
@@ -422,7 +396,7 @@ ALTER TABLE ONLY public.pay_rates
 
 
 --
--- Name: project_workers project_workers_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: project_workers project_workers_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.project_workers
@@ -430,7 +404,7 @@ ALTER TABLE ONLY public.project_workers
 
 
 --
--- Name: project_workers project_workers_worker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: project_workers project_workers_worker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.project_workers
