@@ -56,8 +56,8 @@ app.get('/', (req, res) => {
 });
 
 // Add this before your 404 handler
-app.post('/api/clock-entries/:worker_id/force-clock-out', (req, res, next) => {
-  req.url = '/force-clock-out/' + req.params.worker_id;
+app.post('/api/clock-entries/:id/force-clock-out', (req, res, next) => {
+  req.url = '/force-clock-out-by-entry/' + req.params.id;
   clockRoutes(req, res, next);
 });
 
