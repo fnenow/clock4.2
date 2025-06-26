@@ -56,10 +56,14 @@ app.get('/', (req, res) => {
 });
 
 // Add this before your 404 handler
-app.post('/api/clock-entries/:id/force-clock-out', (req, res, next) => {
-  req.url = '/force-clock-out-by-entry/' + req.params.id;
+app.post('/api/clock-entries/:session_id/force-clock-out', (req, res, next) => {
+  req.url = '/force-clock-out-by-session/' + req.params.session_id;
   clockRoutes(req, res, next);
 });
+//app.post('/api/clock-entries/:id/force-clock-out', (req, res, next) => {
+//  req.url = '/force-clock-out-by-entry/' + req.params.id;
+//  clockRoutes(req, res, next);
+//});
 
 app.use((req, res) => {
   res.status(404).send('404 Not Found');
