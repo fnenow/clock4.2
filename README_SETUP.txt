@@ -46,14 +46,16 @@ This is a modern time clock and payroll management system for contractors or sma
 
 4. **Create the database schema and test data**
 
-   - Open your Railway PostgreSQL plugin.
-   - Go to the **Query** tab.
-   - Paste the content of `models/schema.sql` and click **Run**.
-
-   This creates all tables and inserts test data:  
-   - **Worker:** John Doe (worker_id: `12345`, password: `99999`)
-   - **Project:** Test Project (assigned to John Doe)
-   - **Payrate:** $30/hr for John Doe
+Step-by-Step: Deploy schema.sql to Railway PostgreSQL
+         1. Prepare your database URL
+         Get your Railway PostgreSQL connection string from the Railway dashboard. It'll look like this:
+         postgresql://USER:PASSWORD@HOST:PORT/DATABASE
+         Export it in your terminal:
+         export DATABASE_URL="postgresql://user:password@host:port/dbname"
+      2. Run psql to apply the schema
+         Assuming schema.sql is in your current folder:
+         psql "$DATABASE_URL" -f schema.sql
+         This will apply all CREATE TABLE, ALTER TABLE, CREATE INDEX, etc., in the schema.sql file to your Railway database.
 
 5. **Run the server locally (for development)**
 
