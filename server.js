@@ -41,6 +41,16 @@ app.use('/api/payroll', payrollRoutes);
 // app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/worker-dashboard', workerDashboardRoutes);
 
+// Add this before your 404 handler
+app.post('/api/clock-entries/:session_id/force-clock-out', (req, res, next) => {
+  req.url = '/force-clock-out-by-session/' + req.params.session_id;
+  clockRoutes(req, res, next);
+});
+//app.post('/api/clock-entries/:id/force-clock-out', (req, res, next) => {
+//  req.url = '/force-clock-out-by-entry/' + req.params.id;
+//  clockRoutes(req, res, next);
+//});
+
 // --- ADDED ALIAS ROUTE FOR /api/clock-entries ---
 app.use('/api/clock-entries', (req, res, next) => {
   // Forward to /entries route in clockRoutes
@@ -54,16 +64,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'timeclock.html'));
 });
-
-// Add this before your 404 handler
-app.post('/api/clock-entries/:session_id/force-clock-out', (req, res, next) => {
-  req.url = '/force-clock-out-by-session/' + req.params.session_id;
-  clockRoutes(req, res, next);
-});
-//app.post('/api/clock-entries/:id/force-clock-out', (req, res, next) => {
-//  req.url = '/force-clock-out-by-entry/' + req.params.id;
-//  clockRoutes(req, res, next);
-//});
 
 app.use((req, res) => {
   res.status(404).send('404 Not Found');
