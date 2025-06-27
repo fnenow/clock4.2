@@ -17,6 +17,7 @@ function getSessions(entries) {
     if (!bySession[e.session_id]) bySession[e.session_id] = {};
     bySession[e.session_id][e.action] = e;
   }
+
   const sessions = [];
   for (const [session_id, pair] of Object.entries(bySession)) {
     const inEntry = pair.in;
@@ -25,34 +26,62 @@ function getSessions(entries) {
     const clockOutStr = outEntry?.datetime_local || '';
     const durationMs = inEntry && outEntry ? (new Date(clockOutStr.replace(' ', 'T')) - new Date(clockInStr.replace(' ', 'T'))) : 0;
     const durationHr = durationMs / 3600000;
-    const durationStr = inEntry && outEntry ? formatDuration(clockInStr, clockOutStr) : '';
-
-    const regularHours = inEntry && outEntry ? Math.min(8, durationHr) : 0;
-    const overtimeHours = inEntry && outEntry ? Math.max(0, durationHr - 8) : 0;
     const payRate = parseFloat(inEntry?.pay_rate || outEntry?.pay_rate || 0);
-    const totalPay = (regularHours * payRate + overtimeHours * payRate * 1.5).toFixed(2);
 
-    sessions.push({
+    const regularHours = Math.min(8, durationHr);
+    const overtimeHours = Math.max(0, durationHr - 8);
+
+    const baseSession = {
       session_id,
       worker_id: inEntry?.worker_id || outEntry?.worker_id,
       worker_name: inEntry?.worker_name || outEntry?.worker_name,
       project_id: inEntry?.project_id || outEntry?.project_id,
       project_name: inEntry?.project_name || outEntry?.project_name,
-      clock_in: clockInStr,
-      clock_out: clockOutStr,
-      duration: durationStr,
-      regular_hours: regularHours,
-      overtime_hours: overtimeHours,
-      total_pay: totalPay,
-      note_in: inEntry?.note || '',
-      note_out: outEntry?.note || '',
       pay_rate: payRate,
+      note_out: outEntry?.note || '',
       id_in: inEntry?.id,
       id_out: outEntry?.id
+    };
+
+    // Regular time row
+    sessions.push({
+      ...baseSession,
+      clock_in: clockInStr,
+      clock_out: overtimeHours > 0
+        ? new Date(new Date(clockInStr.replace(' ', 'T')).getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 16).replace('T', ' ')
+        : clockOutStr,
+      duration: formatDuration(clockInStr, clockOutStr),
+      regular_hours: round2(regularHours),
+      overtime_hours: 0,
+      total_pay: round2(regularHours * payRate),
+      note_in: inEntry?.note || '',
+      isOT: false
     });
+
+    // Overtime row
+    if (overtimeHours > 0) {
+      const otStart = new Date(new Date(clockInStr.replace(' ', 'T')).getTime() + 8 * 3600000);
+      const otStartStr = otStart.toISOString().slice(0, 16).replace('T', ' ');
+      sessions.push({
+        ...baseSession,
+        clock_in: otStartStr,
+        clock_out: clockOutStr,
+        duration: formatDuration(otStartStr, clockOutStr),
+        regular_hours: 0,
+        overtime_hours: round2(overtimeHours),
+        total_pay: round2(overtimeHours * payRate * 1.5),
+        note_in: 'In: overtime',
+        isOT: true
+      });
+    }
   }
   return sessions;
 }
+
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
+
 
 function isOvertimeSession(session) {
   return session.overtime_hours > 0;
@@ -78,7 +107,7 @@ function renderSessions() {
         <td><span class="editable" data-type="project" data-session="${s.session_id}" contenteditable>${s.project_name || ''}</span></td>
         <td><span class="editable" data-type="clock_in" data-session="${s.session_id}" contenteditable>${s.clock_in || ''}</span></td>
         <td><span class="editable" data-type="clock_out" data-session="${s.session_id}" contenteditable>${s.clock_out || ''}</span></td>
-        <td>${s.duration || ''} (${s.regular_hours}h RT / ${s.overtime_hours}h OT)</td>
+        <td>${s.duration || ''}</td>
         <td><span class="editable" data-type="note_in" data-session="${s.session_id}" contenteditable>${s.note_in || ''}</span></td>
         <td><span class="editable" data-type="note_out" data-session="${s.session_id}" contenteditable>${s.note_out || ''}</span></td>
         <td>${s.pay_rate ? `$${s.pay_rate.toFixed(2)}` : ''} ($${s.total_pay})</td>
