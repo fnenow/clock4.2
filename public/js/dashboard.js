@@ -1,9 +1,9 @@
-// === Full updated dashboard.js with fixed data loading ===
-
+// === Modified dashboard.js fixes ===
 function formatDuration(start, end) {
   if (!start) return '';
   const startDate = new Date(start.replace(' ', 'T'));
   const endDate = end ? new Date(end.replace(' ', 'T')) : new Date();
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return '';
   const diffMs = endDate - startDate;
   if (diffMs < 0) return '';
   const h = Math.floor(diffMs / (1000 * 60 * 60));
@@ -24,7 +24,10 @@ function getSessions(entries) {
     const outEntry = pair.out;
     const clockInStr = inEntry?.datetime_local || '';
     const clockOutStr = outEntry?.datetime_local || '';
-    const durationMs = inEntry && outEntry ? (new Date(clockOutStr.replace(' ', 'T')) - new Date(clockInStr.replace(' ', 'T'))) : 0;
+    const inTime = new Date(clockInStr.replace(' ', 'T'));
+    const outTime = new Date(clockOutStr.replace(' ', 'T'));
+
+    const durationMs = inEntry && outEntry && !isNaN(inTime) && !isNaN(outTime) ? outTime - inTime : 0;
     const durationHr = durationMs / 3600000;
     const payRate = parseFloat(inEntry?.pay_rate || outEntry?.pay_rate || 0);
 
@@ -44,13 +47,17 @@ function getSessions(entries) {
     };
 
     // Regular time row
+    let regClockOut = clockOutStr;
+    if (overtimeHours > 0 && !isNaN(inTime)) {
+      const otEnd = new Date(inTime.getTime() + 8 * 3600000);
+      regClockOut = `${otEnd.getFullYear()}-${String(otEnd.getMonth() + 1).padStart(2, '0')}-${String(otEnd.getDate()).padStart(2, '0')} ${String(otEnd.getHours()).padStart(2, '0')}:${String(otEnd.getMinutes()).padStart(2, '0')}`;
+    }
+
     sessions.push({
       ...baseSession,
       clock_in: clockInStr,
-      clock_out: overtimeHours > 0
-        ? new Date(new Date(clockInStr.replace(' ', 'T')).getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 16).replace('T', ' ')
-        : clockOutStr,
-      duration: formatDuration(clockInStr, clockOutStr),
+      clock_out: regClockOut,
+      duration: formatDuration(clockInStr, regClockOut),
       regular_hours: round2(regularHours),
       overtime_hours: 0,
       total_pay: round2(regularHours * payRate),
@@ -59,9 +66,9 @@ function getSessions(entries) {
     });
 
     // Overtime row
-    if (overtimeHours > 0) {
-      const otStart = new Date(new Date(clockInStr.replace(' ', 'T')).getTime() + 8 * 3600000);
-      const otStartStr = otStart.toISOString().slice(0, 16).replace('T', ' ');
+    if (overtimeHours > 0 && !isNaN(inTime)) {
+      const otStart = new Date(inTime.getTime() + 8 * 3600000);
+      const otStartStr = `${otStart.getFullYear()}-${String(otStart.getMonth() + 1).padStart(2, '0')}-${String(otStart.getDate()).padStart(2, '0')} ${String(otStart.getHours()).padStart(2, '0')}:${String(otStart.getMinutes()).padStart(2, '0')}`;
       sessions.push({
         ...baseSession,
         clock_in: otStartStr,
@@ -81,7 +88,6 @@ function getSessions(entries) {
 function round2(n) {
   return Math.round(n * 100) / 100;
 }
-
 
 function isOvertimeSession(session) {
   return session.overtime_hours > 0;
@@ -107,11 +113,11 @@ function renderSessions() {
         <td><span class="editable" data-type="project" data-session="${s.session_id}" contenteditable>${s.project_name || ''}</span></td>
         <td><span class="editable" data-type="clock_in" data-session="${s.session_id}" contenteditable>${s.clock_in || ''}</span></td>
         <td><span class="editable" data-type="clock_out" data-session="${s.session_id}" contenteditable>${s.clock_out || ''}</span></td>
-        <td>${s.duration || ''}</td>
+        <td>${s.duration || ''} (${s.regular_hours}h RT / ${s.overtime_hours}h OT)</td>
         <td><span class="editable" data-type="note_in" data-session="${s.session_id}" contenteditable>${s.note_in || ''}</span></td>
         <td><span class="editable" data-type="note_out" data-session="${s.session_id}" contenteditable>${s.note_out || ''}</span></td>
         <td>${s.pay_rate ? `$${s.pay_rate.toFixed(2)}` : ''} ($${s.total_pay})</td>
-        <td>${!s.clock_out ? `<button onclick="forceClockOut('${s.session_id}')">Force Clock-Out</button>` : ''}</td>
+        <td>${!s.clock_out ? `<button onclick="forceClockOut('${s.id_in}')">Force Clock-Out</button>` : ''}</td>
       </tr>
     `;
   }).join('');
@@ -121,138 +127,8 @@ function renderSessions() {
   });
 }
 
-async function loadData() {
-  try {
-    const res = await fetch('/api/clock-entries');
-    const data = await res.json();
-    allEntries = data;
-    allSessions = getSessions(allEntries);
-    populateFilters();
-    renderSessions();
-  } catch (err) {
-    console.error("loadData failed:", err);
-  }
-}
-
-function populateFilters() {
-  const workerSel = document.getElementById('filterWorker');
-  const projectSel = document.getElementById('filterProject');
-  const workers = getUnique(allEntries, 'worker_name');
-  const projects = getUnique(allEntries, 'project_name');
-  workerSel.innerHTML = '<option value="">All</option>' + workers.map(w => `<option>${w}</option>`).join('');
-  projectSel.innerHTML = '<option value="">All</option>' + projects.map(p => `<option>${p}</option>`).join('');
-}
-
-function getUnique(entries, field) {
-  return Array.from(new Set(entries.map(e => e[field]))).filter(Boolean);
-}
-
-// Event bindings
 const otCheckbox = document.getElementById('highlightOvertime');
 otCheckbox.addEventListener('change', e => {
   highlightOvertime = e.target.checked;
   renderSessions();
 });
-
-document.getElementById('filterWorker').addEventListener('change', e => {
-  filterWorker = e.target.value;
-  renderSessions();
-});
-
-document.getElementById('filterProject').addEventListener('change', e => {
-  filterProject = e.target.value;
-  renderSessions();
-});
-
-document.getElementById('filterStartDate').addEventListener('change', e => {
-  filterStartDate = e.target.value;
-  renderSessions();
-});
-
-document.getElementById('filterEndDate').addEventListener('change', e => {
-  filterEndDate = e.target.value;
-  renderSessions();
-});
-
-document.getElementById('tabOpen').addEventListener('click', () => {
-  currentTab = 'open';
-  updateTabs();
-  renderSessions();
-});
-
-document.getElementById('tabClosed').addEventListener('click', () => {
-  currentTab = 'closed';
-  updateTabs();
-  renderSessions();
-});
-
-document.getElementById('tabAll').addEventListener('click', () => {
-  currentTab = 'all';
-  updateTabs();
-  renderSessions();
-});
-
-function updateTabs() {
-  document.getElementById('tabOpen').classList.toggle('selected', currentTab === 'open');
-  document.getElementById('tabClosed').classList.toggle('selected', currentTab === 'closed');
-  document.getElementById('tabAll').classList.toggle('selected', currentTab === 'all');
-}
-
-async function handleInlineEdit(e) {
-  const span = e.target;
-  const newValue = span.innerText.trim();
-  const type = span.getAttribute('data-type');
-  const sessionId = span.getAttribute('data-session');
-  const session = allSessions.find(s => s.session_id === sessionId);
-  if (!session) return;
-
-  if (type === 'project') {
-    if (session.id_in) await patchEntry(session.id_in, { project_name: newValue });
-    if (session.id_out) await patchEntry(session.id_out, { project_name: newValue });
-  } else if (type === 'clock_in' && session.id_in) {
-    await patchEntry(session.id_in, { datetime_local: newValue });
-  } else if (type === 'clock_out' && session.id_out) {
-    await patchEntry(session.id_out, { datetime_local: newValue });
-  } else if (type === 'note_in' && session.id_in) {
-    await patchEntry(session.id_in, { note: newValue });
-  } else if (type === 'note_out' && session.id_out) {
-    await patchEntry(session.id_out, { note: newValue });
-  }
-  await loadData();
-}
-
-async function patchEntry(id, body) {
-  await fetch(`/api/clock-entries/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-}
-
-async function forceClockOut(session_id) {
-  if (!confirm("Force clock out now?")) return;
-  const res = await fetch(`/api/clock-entries/${session_id}/force-clock-out`, { method: 'POST' });
-  if (res.ok) await loadData();
-  else alert("Failed to force clock out");
-}
-//window.forceClockOut = forceClockOut;
-//async function forceClockOut(id_in) {
-//  if (!confirm("Force clock out now?")) return;
-//  const res = await fetch(`/api/clock-entries/${id_in}/force-clock-out`, { method: 'POST' });
-//  if (res.ok) await loadData();
-//  else alert("Failed to force clock out");
-//}
-//window.forceClockOut = forceClockOut;
-
-// Globals
-let allEntries = [];
-let allSessions = [];
-let filterWorker = '';
-let filterProject = '';
-let filterStartDate = '';
-let filterEndDate = '';
-let currentTab = 'open';
-let highlightOvertime = false;
-
-// Initial load
-loadData();
