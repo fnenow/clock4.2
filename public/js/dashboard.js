@@ -1,7 +1,6 @@
-// === Full updated dashboard.js with fixed LOCAL-ONLY overtime calculation ===
+//copilot v3 === Full updated dashboard.js: group by day, then worker for cleaner report ===
 
 function formatDurationLocal(start, end) {
-  // Both start and end are 'YYYY-MM-DD HH:mm[:ss]' strings
   if (!start) return '';
   if (!end) return '';
   const [sDate, sTime] = start.split(' ');
@@ -11,7 +10,6 @@ function formatDurationLocal(start, end) {
   const [sh, smin] = sTime.split(':').map(Number);
   const [eh, emin] = eTime.split(':').map(Number);
 
-  // Manual local timestamp math (minutes since epoch)
   const startMins = ((sy * 12 + (sm - 1)) * 31 + (sd - 1)) * 24 * 60 + sh * 60 + smin;
   const endMins   = ((ey * 12 + (em - 1)) * 31 + (ed - 1)) * 24 * 60 + eh * 60 + emin;
   const diff = endMins - startMins;
@@ -21,16 +19,16 @@ function formatDurationLocal(start, end) {
   return `${h}h ${m}m`;
 }
 
-// Groups sessions by worker, project, and LOCAL date (YYYY-MM-DD), then sums durations to compute overtime
+// Groups sessions by day, then worker, then project
 function getSessions(entries) {
-  // Step 1: pair in/out by session_id
+  // 1. Pair in/out by session_id
   const bySession = {};
   for (const e of entries) {
     if (!bySession[e.session_id]) bySession[e.session_id] = {};
     bySession[e.session_id][e.action] = e;
   }
 
-  // Step 2: Build raw session list
+  // 2. Build raw session list
   const sessions = [];
   for (const [session_id, pair] of Object.entries(bySession)) {
     const inEntry = pair.in;
@@ -38,7 +36,6 @@ function getSessions(entries) {
     if (!inEntry) continue; // skip incomplete
     const clockInStr = inEntry?.datetime_local || '';
     const clockOutStr = outEntry?.datetime_local || '';
-    // duration in minutes (manual, local-only)
     let duration = '';
     let durationMinutes = 0;
     if (clockInStr && clockOutStr) {
@@ -71,20 +68,26 @@ function getSessions(entries) {
     });
   }
 
-  // Step 3: Group by (worker, project, LOCAL-DATE)
+  // 3. Group by day, then worker, then project
   const byDay = {};
   for (const sess of sessions) {
     if (!sess.clock_in || !sess.clock_out) continue;
     const date = sess.clock_in.split(' ')[0]; // 'YYYY-MM-DD'
-    const key = [sess.worker_id, sess.project_id, date].join('|');
-    if (!byDay[key]) {
-      byDay[key] = {
+    if (!byDay[date]) byDay[date] = {};
+    if (!byDay[date][sess.worker_id]) {
+      byDay[date][sess.worker_id] = {
         worker_id: sess.worker_id,
         worker_name: sess.worker_name,
+        projects: {}
+      };
+    }
+    const workerGroup = byDay[date][sess.worker_id];
+    const projKey = sess.project_id;
+    if (!workerGroup.projects[projKey]) {
+      workerGroup.projects[projKey] = {
         project_id: sess.project_id,
         project_name: sess.project_name,
         pay_rate: sess.pay_rate,
-        date,
         sessions: [],
         totalMinutes: 0,
         notes_in: [],
@@ -94,40 +97,51 @@ function getSessions(entries) {
         ids_out: [],
       };
     }
-    byDay[key].sessions.push(sess);
-    byDay[key].totalMinutes += sess.durationMinutes;
-    byDay[key].notes_in.push(sess.note_in);
-    byDay[key].notes_out.push(sess.note_out);
-    byDay[key].session_ids.push(sess.session_id);
-    byDay[key].ids_in.push(sess.id_in);
-    byDay[key].ids_out.push(sess.id_out);
+    const proj = workerGroup.projects[projKey];
+    proj.sessions.push(sess);
+    proj.totalMinutes += sess.durationMinutes;
+    proj.notes_in.push(sess.note_in);
+    proj.notes_out.push(sess.note_out);
+    proj.session_ids.push(sess.session_id);
+    proj.ids_in.push(sess.id_in);
+    proj.ids_out.push(sess.id_out);
   }
 
-  // Step 4: Build final data for table (one row per worker/project/date, no splitting)
+  // 4. Build final output: array of { date, worker_name, ...project summaries }
   const output = [];
-  for (const day of Object.values(byDay)) {
-    const regularMinutes = Math.min(480, day.totalMinutes);
-    const overtimeMinutes = Math.max(0, day.totalMinutes - 480);
-    const payRate = day.pay_rate;
-    output.push({
-      session_ids: day.session_ids.join(','),
-      worker_id: day.worker_id,
-      worker_name: day.worker_name,
-      project_id: day.project_id,
-      project_name: day.project_name,
-      date: day.date,
-      clock_in: day.sessions[0].clock_in,
-      clock_out: day.sessions[day.sessions.length - 1].clock_out,
-      duration: `${Math.floor(day.totalMinutes/60)}h ${day.totalMinutes%60}m`,
-      regular_hours: round2(regularMinutes/60),
-      overtime_hours: round2(overtimeMinutes/60),
-      total_pay: round2((regularMinutes/60)*payRate + (overtimeMinutes/60)*payRate*1.5),
-      note_in: day.notes_in.join('; '),
-      note_out: day.notes_out.join('; '),
-      ids_in: day.ids_in,
-      ids_out: day.ids_out,
-      isOT: overtimeMinutes > 0,
-    });
+  for (const date of Object.keys(byDay).sort()) {
+    for (const worker_id of Object.keys(byDay[date]).sort((a, b) => {
+      const nameA = byDay[date][a].worker_name || '';
+      const nameB = byDay[date][b].worker_name || '';
+      return nameA.localeCompare(nameB);
+    })) {
+      const workerGroup = byDay[date][worker_id];
+      for (const project_id of Object.keys(workerGroup.projects)) {
+        const proj = workerGroup.projects[project_id];
+        const regularMinutes = Math.min(480, proj.totalMinutes);
+        const overtimeMinutes = Math.max(0, proj.totalMinutes - 480);
+        const payRate = proj.pay_rate;
+        output.push({
+          date,
+          worker_id,
+          worker_name: workerGroup.worker_name,
+          project_id,
+          project_name: proj.project_name,
+          clock_in: proj.sessions[0].clock_in,
+          clock_out: proj.sessions[proj.sessions.length - 1].clock_out,
+          duration: `${Math.floor(proj.totalMinutes/60)}h ${proj.totalMinutes%60}m`,
+          regular_hours: round2(regularMinutes/60),
+          overtime_hours: round2(overtimeMinutes/60),
+          total_pay: round2((regularMinutes/60)*payRate + (overtimeMinutes/60)*payRate*1.5),
+          note_in: proj.notes_in.join('; '),
+          note_out: proj.notes_out.join('; '),
+          session_ids: proj.session_ids.join(','),
+          ids_in: proj.ids_in,
+          ids_out: proj.ids_out,
+          isOT: overtimeMinutes > 0,
+        });
+      }
+    }
   }
   return output;
 }
@@ -140,6 +154,7 @@ function isOvertimeSession(session) {
   return session.overtime_hours > 0;
 }
 
+// Render with grouping: day, then worker, then list projects as rows under each worker
 function renderSessions() {
   const tbody = document.querySelector('#sessionTable tbody');
   let filtered = allSessions.filter(s => {
@@ -152,22 +167,46 @@ function renderSessions() {
   if (currentTab === 'open') filtered = filtered.filter(s => !s.clock_out);
   else if (currentTab === 'closed') filtered = filtered.filter(s => !!s.clock_out);
 
-  tbody.innerHTML = filtered.map(s => {
-    const overtime = highlightOvertime && isOvertimeSession(s);
-    return `
-      <tr${overtime ? ' class="overtime"' : ''}>
-        <td>${s.worker_name || ''}</td>
-        <td><span class="editable" data-type="project" data-session="${s.session_ids}" contenteditable>${s.project_name || ''}</span></td>
-        <td><span class="editable" data-type="clock_in" data-session="${s.session_ids}" contenteditable>${s.clock_in || ''}</span></td>
-        <td><span class="editable" data-type="clock_out" data-session="${s.session_ids}" contenteditable>${s.clock_out || ''}</span></td>
-        <td>${s.duration || ''} (${s.regular_hours}h + <b style="color:red">${s.overtime_hours}h</b>)</td>
-        <td><span class="editable" data-type="note_in" data-session="${s.session_ids}" contenteditable>${s.note_in || ''}</span></td>
-        <td><span class="editable" data-type="note_out" data-session="${s.session_ids}" contenteditable>${s.note_out || ''}</span></td>
-        <td>${s.pay_rate ? `$${s.pay_rate.toFixed(2)}` : ''} ($${s.total_pay})</td>
-        <td>${!s.clock_out ? `<button onclick="forceClockOut('${s.session_ids.split(',')[0]}')">Force Clock-Out</button>` : ''}</td>
-      </tr>
-    `;
-  }).join('');
+  // Group by date, then worker
+  const byDay = {};
+  for (const s of filtered) {
+    if (!byDay[s.date]) byDay[s.date] = {};
+    if (!byDay[s.date][s.worker_id]) byDay[s.date][s.worker_id] = {
+      worker_name: s.worker_name,
+      projects: []
+    };
+    byDay[s.date][s.worker_id].projects.push(s);
+  }
+
+  let html = '';
+  for (const date of Object.keys(byDay).sort()) {
+    html += `<tr><td colspan="9" style="background:#eef;font-weight:bold">${date}</td></tr>`;
+    for (const worker_id of Object.keys(byDay[date]).sort((a, b) => {
+      const nameA = byDay[date][a].worker_name || '';
+      const nameB = byDay[date][b].worker_name || '';
+      return nameA.localeCompare(nameB);
+    })) {
+      const workerGroup = byDay[date][worker_id];
+      html += `<tr><td colspan="9" style="background:#f8f8ff;font-weight:bold;padding-left:24px">${workerGroup.worker_name}</td></tr>`;
+      for (const s of workerGroup.projects) {
+        const overtime = highlightOvertime && isOvertimeSession(s);
+        html += `
+          <tr${overtime ? ' class="overtime"' : ''}>
+            <td></td>
+            <td><span class="editable" data-type="project" data-session="${s.session_ids}" contenteditable>${s.project_name || ''}</span></td>
+            <td><span class="editable" data-type="clock_in" data-session="${s.session_ids}" contenteditable>${s.clock_in || ''}</span></td>
+            <td><span class="editable" data-type="clock_out" data-session="${s.session_ids}" contenteditable>${s.clock_out || ''}</span></td>
+            <td>${s.duration || ''} (${s.regular_hours}h + <b style="color:red">${s.overtime_hours}h</b>)</td>
+            <td><span class="editable" data-type="note_in" data-session="${s.session_ids}" contenteditable>${s.note_in || ''}</span></td>
+            <td><span class="editable" data-type="note_out" data-session="${s.session_ids}" contenteditable>${s.note_out || ''}</span></td>
+            <td>${s.pay_rate ? `$${s.pay_rate.toFixed(2)}` : ''} ($${s.total_pay})</td>
+            <td>${!s.clock_out ? `<button onclick="forceClockOut('${s.session_ids.split(',')[0]}')">Force Clock-Out</button>` : ''}</td>
+          </tr>
+        `;
+      }
+    }
+  }
+  tbody.innerHTML = html;
 
   document.querySelectorAll('.editable').forEach(span => {
     span.onblur = handleInlineEdit;
@@ -296,9 +335,9 @@ async function forceClockOut(session_id) {
 document.getElementById('exportCSV').addEventListener('click', () => {
   let csv = [
     [
+      "Date",
       "Worker",
       "Project",
-      "Date",
       "Clock-in (local)",
       "Clock-out (local)",
       "Duration",
@@ -311,9 +350,9 @@ document.getElementById('exportCSV').addEventListener('click', () => {
   ];
   for (const s of allSessions) {
     csv.push([
+      `"${s.date}"`,
       `"${s.worker_name}"`,
       `"${s.project_name}"`,
-      `"${s.date}"`,
       `"${s.clock_in}"`,
       `"${s.clock_out}"`,
       `"${s.duration}"`,
