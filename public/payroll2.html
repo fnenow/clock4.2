@@ -271,6 +271,7 @@ function renderPayrollGroupedTable(data) {
   let html = `<table class="payroll-group-table">
     <thead>
       <tr>
+        <th><input type="checkbox" id="check-all" onchange="toggleAllChecks(this)"></th>
         <th>Date</th>
         <th>Project</th>
         <th>Worker</th>
@@ -289,8 +290,10 @@ function renderPayrollGroupedTable(data) {
     html += "<tr>";
     if (entry.date !== currentGroupDate) {
       currentGroupDate = entry.date;
+      html += `<td class="payroll-date-cell"><input type="checkbox" class="payroll-check" value="${entry.id || ''}"></td>`;
       html += `<td class="payroll-date-cell">${entry.date}</td>`;
     } else {
+      html += `<td class="payroll-date-cell"><input type="checkbox" class="payroll-check" value="${entry.id || ''}"></td>`;
       html += `<td class="payroll-date-cell"></td>`;
     }
     html += `
@@ -330,6 +333,7 @@ async function loadPayrollGrouped() {
   for (const row of rows) {
     const date = formatDateDisplay(row.datetime_local || row.datetime_utc);
     groupedRows.push({
+      id: row.id,
       date,
       project: row.project_name || '',
       worker: row.worker_name || '',
