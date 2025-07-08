@@ -281,10 +281,62 @@ function renderPayrollGroupedTable(data) {
         <th>OT</th>
         <th>Rate</th>
         <th>Amount</th>
+        <th>Billed</th>
+        <th>Paid</th>
       </tr>
     </thead>
     <tbody>`;
 
+  let currentGroupDate = "";
+  data.forEach(entry => {
+    const ids = JSON.stringify([entry.in_id, entry.out_id]);
+
+    html += "<tr>";
+    if (entry.date !== currentGroupDate) {
+      currentGroupDate = entry.date;
+      html += `<td class="payroll-date-cell"><input type="checkbox" class="payroll-check" value="${entry.in_id}"></td>`;
+      html += `<td class="payroll-date-cell">${entry.date}</td>`;
+    } else {
+      html += `<td class="payroll-date-cell"><input type="checkbox" class="payroll-check" value="${entry.in_id}"></td>`;
+      html += `<td class="payroll-date-cell"></td>`;
+    }
+    html += `
+      <td>${entry.project}</td>
+      <td>${entry.worker}</td>
+      <td>${entry.in}</td>
+      <td>${entry.out}</td>
+      <td>${entry.hours}</td>
+      <td>${entry.ot}</td>
+      <td>${entry.rate}</td>
+      <td>${entry.amount}</td>
+      <td><input type="checkbox" class="mark-billed" data-ids='${ids}' ${entry.billed ? 'checked' : ''}></td>
+      <td><input type="checkbox" class="mark-paid" data-ids='${ids}' ${entry.paid ? 'checked' : ''}></td>
+    </tr>`;
+  });
+
+  html += "</tbody></table>";
+  document.getElementById("payroll-table-grouped").innerHTML = html;
+}
+
+  document.addEventListener('change', async (e) => {
+  const isBilled = e.target.classList.contains('mark-billed');
+  const isPaid = e.target.classList.contains('mark-paid');
+  if (!isBilled && !isPaid) return;
+
+  const ids = JSON.parse(e.target.dataset.ids); // [in_id, out_id]
+  const field = isBilled ? 'billed' : 'paid';
+  const value = e.target.checked;
+
+  await fetch('/api/payroll/update-status', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, field, value })
+  });
+
+  // Optionally reload: loadPayrollGrouped();
+});
+
+  
   let currentGroupDate = "";
   data.forEach(entry => {
     html += "<tr>";
