@@ -48,7 +48,7 @@ router.get('/worker-info', async (req, res) => {
 
     if (code) {
       const r = await pool.query(
-        'SELECT worker_id, name FROM workers WHERE RIGHT(phone_number,5)=$1 LIMIT 1',
+        'SELECT worker_id, name FROM workers WHERE RIGHT(phone,5)=$1 LIMIT 1',
         [code]
       );
       if (!r.rows.length) return res.status(404).json({ error: 'Worker not found' });
