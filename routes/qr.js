@@ -1,65 +1,24 @@
 const express = require('express');
-const jwt = require('jsonwebtoken');
-const QRCode = require('qrcode');
-const pool = require('../db'); // same as your other routes
+const pool = require('../db');
 
 const router = express.Router();
-const SECRET = process.env.JWT_SECRET || 'supersecret';
-const BASE_URL = 'https://clock42-production.up.railway.app/clockin_qr.html';
 
-// --- Generate tokenized worker link ---
-function makeWorkerLink(worker_Id) {
-  const token = jwt.sign({ worker_Id }, SECRET, { expiresIn: '90d' });
-  return `${BASE_URL}?token=${token}`;
-}
+// --- Fetch worker info by worker_id ---
+router.get('/worker-info', async (req, res) => {
+  const { worker_id } = req.query;
+  if (!worker_id) return res.status(400).json({ error: 'Missing worker_id' });
 
-// --- GET JSON link ---
-router.get('/generate-worker-link/:id', (req, res) => {
-  const link = makeWorkerLink(req.params.id);
-  res.json({ link });
-});
-
-// --- GET QR PNG ---
-router.get('/generate-worker-qr/:id', async (req, res) => {
   try {
-    const link = makeWorkerLink(req.params.id);
-    const png = await QRCode.toBuffer(link, { width: 300, errorCorrectionLevel: 'H', margin: 2 });
-    res.setHeader('Content-Type', 'image/png');
-    res.send(png);
+    const r = await pool.query(
+      'SELECT worker_id, name FROM workers WHERE worker_id=$1 LIMIT 1',
+      [worker_id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Worker not found' });
+    res.json(r.rows[0]);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'QR code generation failed' });
+    res.status(500).json({ error: 'DB error' });
   }
 });
-
-// --- Worker info endpoint (resolve token or last 5 digits) ---
-router.get('/worker-info', async (req, res) => {
-  const { code, token } = req.query;
-  try {
-    if (token) {
-      const { worker_id } = jwt.verify(token, SECRET);
-      const r = await pool.query(
-        'SELECT worker_id, name FROM workers WHERE worker_id=$1 LIMIT 1',
-        [worker_id]
-      );
-      if (!r.rows.length) return res.status(404).json({ error: 'Worker not found' });
-      return res.json(r.rows[0]);
-    }
-
-    if (code) {
-      const r = await pool.query(
-        'SELECT worker_id, name FROM workers WHERE RIGHT(phone,5)=$1 LIMIT 1',
-        [code]
-      );
-      if (!r.rows.length) return res.status(404).json({ error: 'Worker not found' });
-      return res.json(r.rows[0]);
-    }
-
-    return res.status(400).json({ error: 'Missing token or code' });
-  } catch (err) {
-    return res.status(401).json({ error: 'Invalid or expired token' });
-  }
-});
-
 
 module.exports = router;
