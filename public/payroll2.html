@@ -189,10 +189,14 @@
       <button class="btn btn-info" type="button" onclick="paidSelected()">Mark Paid</button>
     </div>
     <div class="col-auto d-flex align-items-end">
+      <button class="btn btn-warning" type="button" onclick="sumSelected()">SUM</button>
+    </div>
+    <div class="col-auto d-flex align-items-end">
       <button class="btn btn-secondary" type="button" onclick="exportCSV()">Export CSV</button>
     </div>
   </form>
   <div id="payroll-summary"></div>
+  <div id="payroll-selected-sum"></div>
   <div id="payroll-table-grouped"></div>
 </div>
 
@@ -217,6 +221,7 @@ let filters = {
   billed: "",
   paid: ""
 };
+let payrollRowById = {};
 
 async function loadWorkersAndProjects() {
   // Populate worker and project dropdowns
@@ -271,6 +276,7 @@ function renderPayrollGroupedTable(data) {
   let html = `<table class="payroll-group-table">
     <thead>
       <tr>
+        <th><input type="checkbox" id="check-all" aria-label="Select all payroll entries" onchange="toggleAllChecks(this)"></th>
         <th>Date</th>
         <th>Project</th>
         <th>Worker</th>
@@ -286,7 +292,9 @@ function renderPayrollGroupedTable(data) {
 
   let currentGroupDate = "";
   data.forEach(entry => {
+    const rowDateLabel = entry.date || currentGroupDate || 'unknown date';
     html += "<tr>";
+    html += `<td><input type="checkbox" class="payroll-check" value="${entry.id}" aria-label="Select entry for ${entry.worker || 'worker'} on ${rowDateLabel}" onchange="syncCheckAll()"></td>`;
     if (entry.date !== currentGroupDate) {
       currentGroupDate = entry.date;
       html += `<td class="payroll-date-cell">${entry.date}</td>`;
@@ -317,6 +325,11 @@ async function loadPayrollGrouped() {
   const { rows, workerSums } = await res.json();
 
   renderPayrollSummary(workerSums);
+  clearSelectedSum();
+  payrollRowById = {};
+  rows.forEach(row => {
+    payrollRowById[row.id] = row;
+  });
 
   // Sort by date for grouping
   rows.sort((a, b) => {
@@ -330,6 +343,7 @@ async function loadPayrollGrouped() {
   for (const row of rows) {
     const date = formatDateDisplay(row.datetime_local || row.datetime_utc);
     groupedRows.push({
+      id: row.id,
       date,
       project: row.project_name || '',
       worker: row.worker_name || '',
@@ -368,6 +382,47 @@ function exportCSV() {
 
 function toggleAllChecks(source) {
   document.querySelectorAll('.payroll-check').forEach(cb => cb.checked = source.checked);
+}
+
+function syncCheckAll() {
+  const checks = Array.from(document.querySelectorAll('.payroll-check'));
+  const checkAll = document.getElementById('check-all');
+  if (!checkAll || !checks.length) return;
+  checkAll.checked = checks.every(cb => cb.checked);
+}
+
+function numOrZero(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function clearSelectedSum() {
+  document.getElementById('payroll-selected-sum').innerHTML = '';
+}
+
+function sumSelected() {
+  const ids = Array.from(document.querySelectorAll('.payroll-check:checked')).map(cb => Number(cb.value));
+  if (!ids.length) {
+    clearSelectedSum();
+    return alert('No entries selected.');
+  }
+
+  let totalHours = 0;
+  let totalOT = 0;
+  let totalAmount = 0;
+  ids.forEach(id => {
+    const row = payrollRowById[id];
+    if (!row) return;
+    totalHours += numOrZero(row.regular_time);
+    totalOT += numOrZero(row.overtime);
+    totalAmount += numOrZero(row.pay_amount);
+  });
+
+  document.getElementById('payroll-selected-sum').innerHTML = `
+    <div class="alert alert-warning py-2">
+      <strong>Selected SUM</strong> — Hours: ${totalHours.toFixed(2)} | OT: ${totalOT.toFixed(2)} | Amount: $${totalAmount.toFixed(2)}
+    </div>
+  `;
 }
 
 async function billSelected() {
