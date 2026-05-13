@@ -276,7 +276,7 @@ function renderPayrollGroupedTable(data) {
   let html = `<table class="payroll-group-table">
     <thead>
       <tr>
-        <th><input type="checkbox" id="check-all" onchange="toggleAllChecks(this)"></th>
+        <th><input type="checkbox" id="check-all" aria-label="Select all payroll entries" onchange="toggleAllChecks(this)"></th>
         <th>Date</th>
         <th>Project</th>
         <th>Worker</th>
@@ -292,8 +292,9 @@ function renderPayrollGroupedTable(data) {
 
   let currentGroupDate = "";
   data.forEach(entry => {
+    const rowDateLabel = entry.date || currentGroupDate || 'unknown date';
     html += "<tr>";
-    html += `<td><input type="checkbox" class="payroll-check" value="${entry.id}" onchange="syncCheckAll()"></td>`;
+    html += `<td><input type="checkbox" class="payroll-check" value="${entry.id}" aria-label="Select entry for ${entry.worker || 'worker'} on ${rowDateLabel}" onchange="syncCheckAll()"></td>`;
     if (entry.date !== currentGroupDate) {
       currentGroupDate = entry.date;
       html += `<td class="payroll-date-cell">${entry.date}</td>`;
@@ -324,7 +325,7 @@ async function loadPayrollGrouped() {
   const { rows, workerSums } = await res.json();
 
   renderPayrollSummary(workerSums);
-  document.getElementById('payroll-selected-sum').innerHTML = '';
+  clearSelectedSum();
   payrollRowById = {};
   rows.forEach(row => {
     payrollRowById[row.id] = row;
@@ -395,10 +396,14 @@ function numOrZero(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function clearSelectedSum() {
+  document.getElementById('payroll-selected-sum').innerHTML = '';
+}
+
 function sumSelected() {
   const ids = Array.from(document.querySelectorAll('.payroll-check:checked')).map(cb => Number(cb.value));
   if (!ids.length) {
-    document.getElementById('payroll-selected-sum').innerHTML = '';
+    clearSelectedSum();
     return alert('No entries selected.');
   }
 
