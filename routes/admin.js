@@ -59,7 +59,7 @@ router.get('/clocked-out', async (req, res) => {
 });
 
 
-// List clocked-out sections
+/* List clocked-out sections
 router.get('/clocked-out', async (req, res) => {
   const q = await pool.query(`
     SELECT 
@@ -96,6 +96,8 @@ router.get('/clocked-out', async (req, res) => {
   `);
   res.json(q.rows);
 });
+*/
+
 
 
 module.exports = router;
