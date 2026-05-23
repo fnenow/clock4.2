@@ -246,10 +246,10 @@ router.get('/', async (req, res) => {
     if (end_date)   { vals.push(end_date);   wheres.push(`ce.datetime_local <= $${vals.length}`); }
     if (worker_id)  { vals.push(worker_id);  wheres.push(`ce.worker_id = $${vals.length}`); }
     if (project_id) { vals.push(project_id); wheres.push(`ce.project_id = $${vals.length}`); }
-    if (billed === 'true')  { wheres.push('ce.billed = true'); }
-    if (billed === 'false') { wheres.push('(ce.billed IS false OR ce.billed IS NULL)'); }
-    if (paid === 'true')    { wheres.push('ce.paid = true'); }
-    if (paid === 'false')   { wheres.push('(ce.paid IS false OR ce.paid IS NULL)'); }
+//    if (billed === 'true')  { wheres.push('ce.billed = true'); }
+//    if (billed === 'false') { wheres.push('(ce.billed IS false OR ce.billed IS NULL)'); }
+//    if (paid === 'true')    { wheres.push('ce.paid = true'); }
+//    if (paid === 'false')   { wheres.push('(ce.paid IS false OR ce.paid IS NULL)'); }
     let whereClause = wheres.length ? 'WHERE ' + wheres.join(' AND ') : '';
     const q = await pool.query(`
       SELECT ce.*, w.name as worker_name, p.name as project_name
@@ -259,10 +259,32 @@ router.get('/', async (req, res) => {
       ${whereClause}
       ORDER BY ce.datetime_local ASC
     `, vals);
+//    let dailyRows = await splitDailyOvertime(q.rows);
+//    let finalRows = splitWeeklyOvertime(dailyRows);
+//    let workerSums = summarizeByWorker(finalRows);
+//   res.json({ rows: finalRows, workerSums });
     let dailyRows = await splitDailyOvertime(q.rows);
-    let finalRows = splitWeeklyOvertime(dailyRows);
-    let workerSums = summarizeByWorker(finalRows);
-    res.json({ rows: finalRows, workerSums });
+let finalRows = splitWeeklyOvertime(dailyRows);
+
+// Filter paid/billed AFTER sessions are paired
+if (billed === 'true') {
+  finalRows = finalRows.filter(r => r.billed === true);
+}
+
+if (billed === 'false') {
+  finalRows = finalRows.filter(r => r.billed !== true);
+}
+
+if (paid === 'true') {
+  finalRows = finalRows.filter(r => r.paid === true);
+}
+
+if (paid === 'false') {
+  finalRows = finalRows.filter(r => r.paid !== true);
+}
+
+let workerSums = summarizeByWorker(finalRows);
+res.json({ rows: finalRows, workerSums });
   } catch (e) {
     console.error('API /api/payroll error:', e);
     res.status(500).json({ error: e.message || e.toString() });
@@ -270,7 +292,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/payroll/bill
-router.post('/bill', async (req, res) => {
+/* router.post('/bill', async (req, res) => {
   const { entry_ids, billed_date } = req.body;
   if (!Array.isArray(entry_ids) || !billed_date) return res.status(400).json({ error: 'Missing parameters' });
   await pool.query(
@@ -279,9 +301,37 @@ router.post('/bill', async (req, res) => {
   );
   res.json({ success: true });
 });
+replaced by below codes */
+router.post('/bill', async (req, res) => {
+  const { entry_ids, billed_date } = req.body;
+
+  if (!Array.isArray(entry_ids) || !billed_date) {
+    return res.status(400).json({ error: 'Missing parameters' });
+  }
+
+  try {
+    await pool.query(
+      `
+      UPDATE clock_entries
+      SET billed = TRUE, billed_date = $1
+      WHERE session_id IN (
+        SELECT session_id
+        FROM clock_entries
+        WHERE id = ANY($2::int[])
+      )
+      `,
+      [billed_date, entry_ids]
+    );
+
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 
 // POST /api/payroll/paid
-router.post('/paid', async (req, res) => {
+/* router.post('/paid', async (req, res) => {
   const { entry_ids, paid_date } = req.body;
   if (!Array.isArray(entry_ids) || !paid_date) return res.status(400).json({ error: 'Missing parameters' });
   await pool.query(
@@ -289,7 +339,35 @@ router.post('/paid', async (req, res) => {
     [paid_date, entry_ids]
   );
   res.json({ success: true });
+}); replaced with below */
+
+router.post('/paid', async (req, res) => {
+  const { entry_ids, paid_date } = req.body;
+
+  if (!Array.isArray(entry_ids) || !paid_date) {
+    return res.status(400).json({ error: 'Missing parameters' });
+  }
+
+  try {
+    await pool.query(
+      `
+      UPDATE clock_entries
+      SET paid = TRUE, paid_date = $1
+      WHERE session_id IN (
+        SELECT session_id
+        FROM clock_entries
+        WHERE id = ANY($2::int[])
+      )
+      `,
+      [paid_date, entry_ids]
+    );
+
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
+
 
 // GET /api/payroll/export
 router.get('/export', async (req, res) => {
