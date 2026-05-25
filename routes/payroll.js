@@ -2,289 +2,490 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db');
 
-// Helper: Get most recent pay rate for worker at a date
+// =====================
+// Helper functions
+// =====================
+
 async function getActivePayRate(worker_id, date) {
   const q = await pool.query(
     `SELECT rate FROM pay_rates
-      WHERE worker_id = $1 AND start_date <= $2
+      WHERE worker_id = $1
+        AND start_date <= $2
         AND (end_date IS NULL OR end_date >= $2)
-      ORDER BY start_date DESC LIMIT 1`,
+      ORDER BY start_date DESC
+      LIMIT 1`,
     [worker_id, date]
   );
-  return q.rows[0]?.rate || 0;
+
+  return Number(q.rows[0]?.rate || 0);
 }
 
 function parseDateTime(str) {
   if (!str) return null;
-  let s = str.trim().replace(' ', 'T');
-  let d = new Date(s);
-  if (!isNaN(d.getTime())) return d;
-  let parts = s.split('T');
-  if (parts.length === 2) {
-    let [y, m, day] = parts[0].split('-');
-    let [h, min] = parts[1].split(':');
-    d = new Date(Number(y), Number(m) - 1, Number(day), Number(h), Number(min));
-    if (!isNaN(d.getTime())) return d;
-  }
-  return null;
+
+  const clean = String(str).trim().replace('T', ' ');
+  const [datePart, timePartRaw = '00:00'] = clean.split(' ');
+  const [year, month, day] = datePart.split('-').map(Number);
+  const [hour = 0, minute = 0] = timePartRaw.split(':').map(Number);
+
+  if (!year || !month || !day) return null;
+
+  const d = new Date(year, month - 1, day, hour, minute, 0, 0);
+  if (isNaN(d.getTime())) return null;
+
+  return d;
 }
+
+function getDatePart(str) {
+  if (!str) return '';
+  return String(str).slice(0, 10);
+}
+
+function getRowDateTime(row) {
+  return row.datetime_local || row.datetime_utc || '';
+}
+
+function isTrue(value) {
+  return value === true || value === 'true' || value === 't' || value === 1 || value === '1';
+}
+
 function getISOWeekKey(date) {
   const tmp = new Date(date.valueOf());
   tmp.setHours(0, 0, 0, 0);
   tmp.setDate(tmp.getDate() + 3 - ((tmp.getDay() + 6) % 7));
+
   const week1 = new Date(tmp.getFullYear(), 0, 4);
-  const weekNo = 1 + Math.round(((tmp - week1) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+  const weekNo =
+    1 +
+    Math.round(
+      ((tmp - week1) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7
+    );
+
   return `${tmp.getFullYear()}-W${String(weekNo).padStart(2, '0')}`;
 }
-function groupByWorkerProjectDate(sessions) {
-  let groups = {};
-  sessions.forEach(row => {
-    let dateStr = row.datetime_local || row.datetime_utc;
-    if (!dateStr) return;
-    let day = dateStr.slice(0, 10);
-    let key = `${row.worker_id}|${row.project_id}|${day}`;
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(row);
-  });
-  return groups;
+
+function passesDateFilter(pair, start_date, end_date) {
+  const clockInDate = getDatePart(pair.in.datetime_local || pair.in.datetime_utc);
+
+  if (start_date && clockInDate < start_date) return false;
+  if (end_date && clockInDate > end_date) return false;
+
+  return true;
 }
 
-// Split daily OT for each workday (native JS)
-async function splitDailyOvertime(sessions) {
-  let result = [];
-  let byDay = groupByWorkerProjectDate(sessions);
-  for (let key in byDay) {
-    let dayRows = byDay[key];
-    dayRows.sort((a, b) => {
-      let aTime = a.datetime_local || a.datetime_utc || '';
-      let bTime = b.datetime_local || b.datetime_utc || '';
+// =====================
+// Pair clock entries into sessions
+// Important: use session_id
+// This fixes forced clock-out sessions.
+// =====================
+
+function buildSessionPairs(entries) {
+  const groups = {};
+
+  for (const row of entries) {
+    let key;
+
+    if (row.session_id) {
+      key = `session:${row.session_id}`;
+    } else {
+      // Fallback for older records without session_id
+      const day = getDatePart(row.datetime_local || row.datetime_utc);
+      key = `legacy:${row.worker_id}|${row.project_id}|${day}`;
+    }
+
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(row);
+  }
+
+  const pairs = [];
+
+  for (const key of Object.keys(groups)) {
+    const rows = groups[key].sort((a, b) => {
+      const aTime = getRowDateTime(a);
+      const bTime = getRowDateTime(b);
       return aTime.localeCompare(bTime);
     });
-    let pairs = [];
-    let stack = [];
-    for (let row of dayRows) {
-      if (row.action === 'in') stack.push(row);
-      if (row.action === 'out' && stack.length) {
-        let inRow = stack.pop();
-        pairs.push({ in: inRow, out: row });
+
+    const openIns = [];
+
+    for (const row of rows) {
+      if (row.action === 'in') {
+        openIns.push(row);
       }
-    }
-    let payPairs = [];
-    for (let p of pairs) {
-      let inStr = p.in.datetime_local || p.in.datetime_utc;
-      let outStr = p.out.datetime_local || p.out.datetime_utc;
-      let inTime = parseDateTime(inStr);
-      let outTime = parseDateTime(outStr);
-      if (!inTime || !outTime) {
-        console.warn('Payroll: Skipping invalid datetime:', inStr, outStr, p);
-        continue;
-      }
-      let ms = outTime - inTime;
-      let hours = ms / (1000 * 60 * 60);
-      if (hours < 0) hours = 0;
-      payPairs.push({ ...p, hours, inTime, outTime });
-    }
-    let regLeft = 8;
-    for (let pp of payPairs) {
-      let regH = 0, otH = 0;
-      if (regLeft > 0) {
-        if (pp.hours <= regLeft) {
-          regH = pp.hours;
-          regLeft -= pp.hours;
-        } else {
-          regH = regLeft;
-          otH = pp.hours - regLeft;
-          regLeft = 0;
-        }
-      } else {
-        otH = pp.hours;
-      }
-      let dateStr = pp.in.datetime_local || pp.in.datetime_utc;
-      let pay_rate = pp.in.pay_rate;
-      if (!pay_rate || Number(pay_rate) === 0) {
-        pay_rate = await getActivePayRate(pp.in.worker_id, dateStr ? dateStr.slice(0, 10) : '');
-      }
-      // Only Daily or Weekly for ot_type (no 'regular')
-      if (regH > 0) {
-        result.push({
-          ...pp.in,
-          datetime_out_local: pp.out.datetime_local,
-          regular_time: Number(regH.toFixed(2)),
-          overtime: 0,
-          ot_type: '', // Empty, not 'regular'
-          pay_rate,
-          pay_amount: Number((regH * pay_rate).toFixed(2)),
-          billed: pp.in.billed,
-          billed_date: pp.in.billed_date,
-          paid: pp.in.paid,
-          paid_date: pp.in.paid_date,
-        });
-      }
-      if (otH > 0) {
-        result.push({
-          ...pp.in,
-          datetime_out_local: pp.out.datetime_local,
-          regular_time: 0,
-          overtime: Number(otH.toFixed(2)),
-          ot_type: 'Daily',
-          pay_rate: Number((pay_rate * 1.5).toFixed(2)),
-          pay_amount: Number((otH * pay_rate * 1.5).toFixed(2)),
-          billed: pp.in.billed,
-          billed_date: pp.in.billed_date,
-          paid: pp.in.paid,
-          paid_date: pp.in.paid_date,
+
+      if (row.action === 'out' && openIns.length) {
+        const inRow = openIns.shift();
+        pairs.push({
+          in: inRow,
+          out: row
         });
       }
     }
   }
+
+  return pairs;
+}
+
+// =====================
+// Daily overtime
+// 8 hours regular per worker per day
+// =====================
+
+async function splitDailyOvertime(entries, start_date, end_date) {
+  let pairs = buildSessionPairs(entries);
+
+  // Filter by clock-in date AFTER pairing, so forced clock-out rows are not lost.
+  pairs = pairs.filter(pair => passesDateFilter(pair, start_date, end_date));
+
+  const validPairs = [];
+
+  for (const pair of pairs) {
+    const inStr = pair.in.datetime_local || pair.in.datetime_utc;
+    const outStr = pair.out.datetime_local || pair.out.datetime_utc;
+
+    const inTime = parseDateTime(inStr);
+    const outTime = parseDateTime(outStr);
+
+    if (!inTime || !outTime) {
+      console.warn('Payroll: skipping invalid datetime:', inStr, outStr, pair);
+      continue;
+    }
+
+    let hours = (outTime - inTime) / (1000 * 60 * 60);
+    if (hours < 0) hours = 0;
+
+    validPairs.push({
+      ...pair,
+      inTime,
+      outTime,
+      hours
+    });
+  }
+
+  const byWorkerDay = {};
+
+  for (const pair of validPairs) {
+    const day = getDatePart(pair.in.datetime_local || pair.in.datetime_utc);
+    const key = `${pair.in.worker_id}|${day}`;
+
+    if (!byWorkerDay[key]) byWorkerDay[key] = [];
+    byWorkerDay[key].push(pair);
+  }
+
+  const result = [];
+
+  for (const key of Object.keys(byWorkerDay)) {
+    const dayPairs = byWorkerDay[key].sort((a, b) => a.inTime - b.inTime);
+
+    let regularLeft = 8;
+
+    for (const pair of dayPairs) {
+      let regularHours = 0;
+      let overtimeHours = 0;
+
+      if (regularLeft > 0) {
+        if (pair.hours <= regularLeft) {
+          regularHours = pair.hours;
+          regularLeft -= pair.hours;
+        } else {
+          regularHours = regularLeft;
+          overtimeHours = pair.hours - regularLeft;
+          regularLeft = 0;
+        }
+      } else {
+        overtimeHours = pair.hours;
+      }
+
+      const dateStr = pair.in.datetime_local || pair.in.datetime_utc;
+      const workDate = getDatePart(dateStr);
+
+      let baseRate = Number(pair.in.pay_rate || pair.out.pay_rate || 0);
+
+      if (!baseRate || baseRate === 0) {
+        baseRate = await getActivePayRate(pair.in.worker_id, workDate);
+      }
+
+      const sessionPaid = isTrue(pair.in.paid) || isTrue(pair.out.paid);
+      const sessionBilled = isTrue(pair.in.billed) || isTrue(pair.out.billed);
+
+      const paidDate = pair.in.paid_date || pair.out.paid_date || null;
+      const billedDate = pair.in.billed_date || pair.out.billed_date || null;
+
+      const commonFields = {
+        ...pair.in,
+        id: pair.in.id,
+        session_id: pair.in.session_id,
+        datetime_out_local: pair.out.datetime_local || pair.out.datetime_utc,
+        clock_out_note: pair.out.note || '',
+        paid: sessionPaid,
+        paid_date: paidDate,
+        billed: sessionBilled,
+        billed_date: billedDate
+      };
+
+      if (regularHours > 0) {
+        result.push({
+          ...commonFields,
+          regular_time: Number(regularHours.toFixed(2)),
+          overtime: 0,
+          ot_type: '',
+          pay_rate: Number(baseRate.toFixed(2)),
+          pay_amount: Number((regularHours * baseRate).toFixed(2))
+        });
+      }
+
+      if (overtimeHours > 0) {
+        const overtimeRate = baseRate * 1.5;
+
+        result.push({
+          ...commonFields,
+          regular_time: 0,
+          overtime: Number(overtimeHours.toFixed(2)),
+          ot_type: 'Daily',
+          pay_rate: Number(overtimeRate.toFixed(2)),
+          pay_amount: Number((overtimeHours * overtimeRate).toFixed(2))
+        });
+      }
+    }
+  }
+
   return result;
 }
 
-// Split weekly OT (native JS)
+// =====================
+// Weekly overtime
+// Over 40 regular hours per week becomes weekly OT.
+// Daily OT rows stay as OT.
+// =====================
+
 function splitWeeklyOvertime(dailyRows) {
-  let byWeek = {};
-  dailyRows.forEach(row => {
-    let dateStr = row.datetime_local || row.datetime_utc;
-    let d = parseDateTime(dateStr);
+  const byWeek = {};
+
+  for (const row of dailyRows) {
+    const dateStr = row.datetime_local || row.datetime_utc;
+    const d = parseDateTime(dateStr);
+
     if (!d) {
-      console.warn('Payroll: Skipping row with missing/invalid datetime for weekly OT:', row);
-      return;
+      console.warn('Payroll: skipping invalid weekly OT row:', row);
+      continue;
     }
-    let week = getISOWeekKey(d); // e.g. "2025-W24"
-    let key = `${row.worker_id}|${week}`;
+
+    const week = getISOWeekKey(d);
+    const key = `${row.worker_id}|${week}`;
+
     if (!byWeek[key]) byWeek[key] = [];
     byWeek[key].push(row);
-  });
-  let results = [];
-  for (let key in byWeek) {
-    let rows = byWeek[key];
-    let totalReg = 0;
-    rows.forEach(r => { if (!r.ot_type) totalReg += Number(r.regular_time || 0); }); // only rows with ot_type='' (regular)
-    if (totalReg <= 40) {
-      results = results.concat(rows);
-    } else {
-      let regLeft = 40;
-      for (let r of rows) {
-        if (r.ot_type) { // Only split regulars
-          results.push(r);
-          continue;
-        }
-        let hr = Number(r.regular_time || 0);
-        let pay_rate = r.pay_rate;
-        if (regLeft > 0) {
-          if (hr <= regLeft) {
-            results.push({ ...r, regular_time: Number(hr.toFixed(2)), ot_type: '' });
-            regLeft -= hr;
-          } else {
-            if (regLeft > 0) {
-              results.push({
-                ...r,
-                regular_time: Number(regLeft.toFixed(2)),
-                overtime: 0,
-                ot_type: '',
-                pay_rate,
-                pay_amount: Number((regLeft * pay_rate).toFixed(2))
-              });
-            }
-            let otH = hr - regLeft;
-            if (otH > 0) {
-              results.push({
-                ...r,
-                regular_time: 0,
-                overtime: Number(otH.toFixed(2)),
-                ot_type: 'Weekly',
-                pay_rate: Number((pay_rate * 1.5).toFixed(2)),
-                pay_amount: Number((otH * pay_rate * 1.5).toFixed(2))
-              });
-            }
-            regLeft = 0;
-          }
-        } else {
+  }
+
+  const results = [];
+
+  for (const key of Object.keys(byWeek)) {
+    const rows = byWeek[key].sort((a, b) => {
+      const aTime = getRowDateTime(a);
+      const bTime = getRowDateTime(b);
+      return aTime.localeCompare(bTime);
+    });
+
+    let totalRegular = 0;
+
+    rows.forEach(row => {
+      if (!row.ot_type) {
+        totalRegular += Number(row.regular_time || 0);
+      }
+    });
+
+    if (totalRegular <= 40) {
+      results.push(...rows);
+      continue;
+    }
+
+    let weeklyRegularLeft = 40;
+
+    for (const row of rows) {
+      // Keep existing daily OT rows unchanged.
+      if (row.ot_type) {
+        results.push(row);
+        continue;
+      }
+
+      const hours = Number(row.regular_time || 0);
+      const baseRate = Number(row.pay_rate || 0);
+
+      if (weeklyRegularLeft > 0) {
+        if (hours <= weeklyRegularLeft) {
           results.push({
-            ...r,
-            regular_time: 0,
-            overtime: Number(hr.toFixed(2)),
-            ot_type: 'Weekly',
-            pay_rate: Number((pay_rate * 1.5).toFixed(2)),
-            pay_amount: Number((hr * pay_rate * 1.5).toFixed(2))
+            ...row,
+            regular_time: Number(hours.toFixed(2)),
+            overtime: 0,
+            ot_type: '',
+            pay_rate: Number(baseRate.toFixed(2)),
+            pay_amount: Number((hours * baseRate).toFixed(2))
           });
+
+          weeklyRegularLeft -= hours;
+        } else {
+          if (weeklyRegularLeft > 0) {
+            results.push({
+              ...row,
+              regular_time: Number(weeklyRegularLeft.toFixed(2)),
+              overtime: 0,
+              ot_type: '',
+              pay_rate: Number(baseRate.toFixed(2)),
+              pay_amount: Number((weeklyRegularLeft * baseRate).toFixed(2))
+            });
+          }
+
+          const weeklyOtHours = hours - weeklyRegularLeft;
+          const overtimeRate = baseRate * 1.5;
+
+          if (weeklyOtHours > 0) {
+            results.push({
+              ...row,
+              regular_time: 0,
+              overtime: Number(weeklyOtHours.toFixed(2)),
+              ot_type: 'Weekly',
+              pay_rate: Number(overtimeRate.toFixed(2)),
+              pay_amount: Number((weeklyOtHours * overtimeRate).toFixed(2))
+            });
+          }
+
+          weeklyRegularLeft = 0;
         }
+      } else {
+        const overtimeRate = baseRate * 1.5;
+
+        results.push({
+          ...row,
+          regular_time: 0,
+          overtime: Number(hours.toFixed(2)),
+          ot_type: 'Weekly',
+          pay_rate: Number(overtimeRate.toFixed(2)),
+          pay_amount: Number((hours * overtimeRate).toFixed(2))
+        });
       }
     }
   }
+
   return results;
 }
 
-// Sum Regular/OT/Amount per worker
+function applyStatusFilters(rows, billed, paid) {
+  let filtered = rows;
+
+  if (billed === 'true') {
+    filtered = filtered.filter(row => isTrue(row.billed));
+  }
+
+  if (billed === 'false') {
+    filtered = filtered.filter(row => !isTrue(row.billed));
+  }
+
+  if (paid === 'true') {
+    filtered = filtered.filter(row => isTrue(row.paid));
+  }
+
+  if (paid === 'false') {
+    filtered = filtered.filter(row => !isTrue(row.paid));
+  }
+
+  return filtered;
+}
+
 function summarizeByWorker(rows) {
-  let sums = {};
-  rows.forEach(r => {
-    let name = r.worker_name || r.worker_id;
-    if (!sums[name]) sums[name] = { worker_name: name, regular_time: 0, overtime: 0, pay_amount: 0 };
-    sums[name].regular_time += Number(r.regular_time || 0);
-    sums[name].overtime     += Number(r.overtime || 0);
-    sums[name].pay_amount   += Number(r.pay_amount || 0);
+  const sums = {};
+
+  for (const row of rows) {
+    const name = row.worker_name || row.worker_id;
+
+    if (!sums[name]) {
+      sums[name] = {
+        worker_name: name,
+        regular_time: 0,
+        overtime: 0,
+        pay_amount: 0
+      };
+    }
+
+    sums[name].regular_time += Number(row.regular_time || 0);
+    sums[name].overtime += Number(row.overtime || 0);
+    sums[name].pay_amount += Number(row.pay_amount || 0);
+  }
+
+  Object.values(sums).forEach(sum => {
+    sum.regular_time = Number(sum.regular_time.toFixed(2));
+    sum.overtime = Number(sum.overtime.toFixed(2));
+    sum.pay_amount = Number(sum.pay_amount.toFixed(2));
   });
-  // Round up to 2 decimals
-  Object.values(sums).forEach(s => {
-    s.regular_time = Number(s.regular_time.toFixed(2));
-    s.overtime     = Number(s.overtime.toFixed(2));
-    s.pay_amount   = Number(s.pay_amount.toFixed(2));
-  });
+
   return Object.values(sums);
 }
 
-// ========== MAIN API ========== //
+function csvValue(value) {
+  if (value === null || value === undefined) return '';
+  const str = String(value);
+  return `"${str.replace(/"/g, '""')}"`;
+}
+
+async function getPayrollRows(query) {
+  const { start_date, end_date, worker_id, project_id, billed, paid } = query;
+
+  const wheres = [];
+  const vals = [];
+
+  // Only filter worker/project in SQL.
+  // Date, paid, and billed are filtered after pairing sessions.
+  if (worker_id) {
+    vals.push(worker_id);
+    wheres.push(`ce.worker_id = $${vals.length}`);
+  }
+
+  if (project_id) {
+    vals.push(project_id);
+    wheres.push(`ce.project_id = $${vals.length}`);
+  }
+
+  const whereClause = wheres.length ? 'WHERE ' + wheres.join(' AND ') : '';
+
+  const q = await pool.query(
+    `
+    SELECT
+      ce.*,
+      w.name AS worker_name,
+      p.name AS project_name
+    FROM clock_entries ce
+    JOIN workers w ON ce.worker_id = w.worker_id
+    JOIN projects p ON ce.project_id = p.id
+    ${whereClause}
+    ORDER BY ce.datetime_local ASC, ce.id ASC
+    `,
+    vals
+  );
+
+  const dailyRows = await splitDailyOvertime(q.rows, start_date, end_date);
+  let finalRows = splitWeeklyOvertime(dailyRows);
+
+  finalRows = applyStatusFilters(finalRows, billed, paid);
+
+  finalRows.sort((a, b) => {
+    const aTime = getRowDateTime(a);
+    const bTime = getRowDateTime(b);
+    return aTime.localeCompare(bTime);
+  });
+
+  const workerSums = summarizeByWorker(finalRows);
+
+  return { rows: finalRows, workerSums };
+}
+
+// =====================
+// API routes
+// =====================
 
 // GET /api/payroll
 router.get('/', async (req, res) => {
   try {
-    const { start_date, end_date, worker_id, project_id, billed, paid } = req.query;
-    let wheres = [];
-    let vals = [];
-    if (start_date) { vals.push(start_date); wheres.push(`ce.datetime_local >= $${vals.length}`); }
-    if (end_date)   { vals.push(end_date);   wheres.push(`ce.datetime_local <= $${vals.length}`); }
-    if (worker_id)  { vals.push(worker_id);  wheres.push(`ce.worker_id = $${vals.length}`); }
-    if (project_id) { vals.push(project_id); wheres.push(`ce.project_id = $${vals.length}`); }
-//    if (billed === 'true')  { wheres.push('ce.billed = true'); }
-//    if (billed === 'false') { wheres.push('(ce.billed IS false OR ce.billed IS NULL)'); }
-//    if (paid === 'true')    { wheres.push('ce.paid = true'); }
-//    if (paid === 'false')   { wheres.push('(ce.paid IS false OR ce.paid IS NULL)'); }
-    let whereClause = wheres.length ? 'WHERE ' + wheres.join(' AND ') : '';
-    const q = await pool.query(`
-      SELECT ce.*, w.name as worker_name, p.name as project_name
-      FROM clock_entries ce
-      JOIN workers w ON ce.worker_id = w.worker_id
-      JOIN projects p ON ce.project_id = p.id
-      ${whereClause}
-      ORDER BY ce.datetime_local ASC
-    `, vals);
-//    let dailyRows = await splitDailyOvertime(q.rows);
-//    let finalRows = splitWeeklyOvertime(dailyRows);
-//    let workerSums = summarizeByWorker(finalRows);
-//   res.json({ rows: finalRows, workerSums });
-    let dailyRows = await splitDailyOvertime(q.rows);
-let finalRows = splitWeeklyOvertime(dailyRows);
-
-// Filter paid/billed AFTER sessions are paired
-if (billed === 'true') {
-  finalRows = finalRows.filter(r => r.billed === true);
-}
-
-if (billed === 'false') {
-  finalRows = finalRows.filter(r => r.billed !== true);
-}
-
-if (paid === 'true') {
-  finalRows = finalRows.filter(r => r.paid === true);
-}
-
-if (paid === 'false') {
-  finalRows = finalRows.filter(r => r.paid !== true);
-}
-
-let workerSums = summarizeByWorker(finalRows);
-res.json({ rows: finalRows, workerSums });
+    const result = await getPayrollRows(req.query);
+    res.json(result);
   } catch (e) {
     console.error('API /api/payroll error:', e);
     res.status(500).json({ error: e.message || e.toString() });
@@ -292,16 +493,7 @@ res.json({ rows: finalRows, workerSums });
 });
 
 // POST /api/payroll/bill
-/* router.post('/bill', async (req, res) => {
-  const { entry_ids, billed_date } = req.body;
-  if (!Array.isArray(entry_ids) || !billed_date) return res.status(400).json({ error: 'Missing parameters' });
-  await pool.query(
-    `UPDATE clock_entries SET billed=TRUE, billed_date=$1 WHERE id = ANY($2::int[])`,
-    [billed_date, entry_ids]
-  );
-  res.json({ success: true });
-});
-replaced by below codes */
+// Mark the whole session billed, not only one clock entry row.
 router.post('/bill', async (req, res) => {
   const { entry_ids, billed_date } = req.body;
 
@@ -313,34 +505,28 @@ router.post('/bill', async (req, res) => {
     await pool.query(
       `
       UPDATE clock_entries
-      SET billed = TRUE, billed_date = $1
-      WHERE session_id IN (
-        SELECT session_id
-        FROM clock_entries
-        WHERE id = ANY($2::int[])
-      )
+      SET billed = TRUE,
+          billed_date = $1
+      WHERE id = ANY($2::int[])
+         OR session_id IN (
+            SELECT session_id
+            FROM clock_entries
+            WHERE id = ANY($2::int[])
+              AND session_id IS NOT NULL
+         )
       `,
       [billed_date, entry_ids]
     );
 
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error('API /api/payroll/bill error:', e);
+    res.status(500).json({ error: e.message || e.toString() });
   }
 });
 
-
 // POST /api/payroll/paid
-/* router.post('/paid', async (req, res) => {
-  const { entry_ids, paid_date } = req.body;
-  if (!Array.isArray(entry_ids) || !paid_date) return res.status(400).json({ error: 'Missing parameters' });
-  await pool.query(
-    `UPDATE clock_entries SET paid=TRUE, paid_date=$1 WHERE id = ANY($2::int[])`,
-    [paid_date, entry_ids]
-  );
-  res.json({ success: true });
-}); replaced with below */
-
+// Mark the whole session paid, not only one clock entry row.
 router.post('/paid', async (req, res) => {
   const { entry_ids, paid_date } = req.body;
 
@@ -352,73 +538,84 @@ router.post('/paid', async (req, res) => {
     await pool.query(
       `
       UPDATE clock_entries
-      SET paid = TRUE, paid_date = $1
-      WHERE session_id IN (
-        SELECT session_id
-        FROM clock_entries
-        WHERE id = ANY($2::int[])
-      )
+      SET paid = TRUE,
+          paid_date = $1
+      WHERE id = ANY($2::int[])
+         OR session_id IN (
+            SELECT session_id
+            FROM clock_entries
+            WHERE id = ANY($2::int[])
+              AND session_id IS NOT NULL
+         )
       `,
       [paid_date, entry_ids]
     );
 
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error('API /api/payroll/paid error:', e);
+    res.status(500).json({ error: e.message || e.toString() });
   }
 });
-
 
 // GET /api/payroll/export
 router.get('/export', async (req, res) => {
   try {
-    const { start_date, end_date, worker_id, project_id, billed, paid } = req.query;
-    let wheres = [];
-    let vals = [];
-    if (start_date) { vals.push(start_date); wheres.push(`ce.datetime_local >= $${vals.length}`); }
-    if (end_date)   { vals.push(end_date);   wheres.push(`ce.datetime_local <= $${vals.length}`); }
-    if (worker_id)  { vals.push(worker_id);  wheres.push(`ce.worker_id = $${vals.length}`); }
-    if (project_id) { vals.push(project_id); wheres.push(`ce.project_id = $${vals.length}`); }
-    if (billed === 'true')  { wheres.push('ce.billed = true'); }
-    if (billed === 'false') { wheres.push('(ce.billed IS false OR ce.billed IS NULL)'); }
-    if (paid === 'true')    { wheres.push('ce.paid = true'); }
-    if (paid === 'false')   { wheres.push('(ce.paid IS false OR ce.paid IS NULL)'); }
-    let whereClause = wheres.length ? 'WHERE ' + wheres.join(' AND ') : '';
-    const q = await pool.query(`
-      SELECT ce.*, w.name as worker_name, p.name as project_name
-      FROM clock_entries ce
-      JOIN workers w ON ce.worker_id = w.worker_id
-      JOIN projects p ON ce.project_id = p.id
-      ${whereClause}
-      ORDER BY ce.datetime_local ASC
-    `, vals);
-    let dailyRows = await splitDailyOvertime(q.rows);
-    let finalRows = splitWeeklyOvertime(dailyRows);
-    let csv = [
+    const { rows } = await getPayrollRows(req.query);
+
+    const csv = [
       [
-        'ID', 'Worker', 'Project', 'In', 'Out', 'Regular Hrs', 'OT Hrs', 'OT Type',
-        'Pay Rate', 'Amount', 'Bill Date', 'Paid Date', 'Note'
+        'ID',
+        'Session ID',
+        'Worker',
+        'Project',
+        'In',
+        'Out',
+        'Regular Hrs',
+        'OT Hrs',
+        'OT Type',
+        'Pay Rate',
+        'Amount',
+        'Billed',
+        'Bill Date',
+        'Paid',
+        'Paid Date',
+        'Clock In Note',
+        'Clock Out Note'
       ].join(',')
     ];
-    for (let row of finalRows) {
-      csv.push([
-        row.id,
-        `"${row.worker_name}"`,
-        `"${row.project_name}"`,
-        row.datetime_local || '',
-        row.datetime_out_local || '',
-        row.regular_time || 0,
-        row.overtime || 0,
-        row.ot_type || '',
-        row.pay_rate ? Number(row.pay_rate).toFixed(2) : '',
-        row.pay_amount ? Number(row.pay_amount).toFixed(2) : '',
-        row.billed_date || '',
-        row.paid_date || '',
-        `"${row.note || ''}"`
-      ].join(','));
+
+    for (const row of rows) {
+      csv.push(
+        [
+          row.id || '',
+          row.session_id || '',
+          csvValue(row.worker_name || ''),
+          csvValue(row.project_name || ''),
+          csvValue(row.datetime_local || ''),
+          csvValue(row.datetime_out_local || ''),
+          row.regular_time || 0,
+          row.overtime || 0,
+          csvValue(row.ot_type || ''),
+          row.pay_rate ? Number(row.pay_rate).toFixed(2) : '',
+          row.pay_amount ? Number(row.pay_amount).toFixed(2) : '',
+          isTrue(row.billed) ? 'Yes' : 'No',
+          csvValue(row.billed_date || ''),
+          isTrue(row.paid) ? 'Yes' : 'No',
+          csvValue(row.paid_date || ''),
+          csvValue(row.note || ''),
+          csvValue(row.clock_out_note || '')
+        ].join(',')
+      );
     }
+
     const now = new Date();
-    const filename = `payroll_${String(now.getFullYear()).slice(2)}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}${String(now.getHours()).padStart(2, '0')}.csv`;
+    const filename = `payroll_${String(now.getFullYear()).slice(2)}${String(
+      now.getMonth() + 1
+    ).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}${String(
+      now.getHours()
+    ).padStart(2, '0')}.csv`;
+
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
     res.send(csv.join('\n'));
