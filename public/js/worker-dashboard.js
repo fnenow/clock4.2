@@ -19,22 +19,41 @@ async function checkLogin() {
   return true;
 }
 
+function parseLocalDateTime(value) {
+  if (!value) return null;
+
+  // Convert DB format "YYYY-MM-DD HH:MM" to browser-safe format
+  const cleanValue = String(value).trim().replace(' ', 'T');
+  const date = new Date(cleanValue);
+
+  if (isNaN(date.getTime())) return null;
+  return date;
+}
+
 function formatDuration(start, end) {
-  if (!start) return '';
-  const startDate = new Date(start);
-  const endDate = end ? new Date(end) : new Date();
+  const startDate = parseLocalDateTime(start);
+  const endDate = end ? parseLocalDateTime(end) : new Date();
+
+  if (!startDate || !endDate) return '';
+
   const diffMs = endDate - startDate;
   if (diffMs < 0) return '';
+
   const h = Math.floor(diffMs / (1000 * 60 * 60));
   const m = Math.floor((diffMs / (1000 * 60)) % 60);
+
   return `${h}h ${m}m`;
 }
+
 function getDurationHours(start, end) {
-  if (!start) return 0;
-  const startDate = new Date(start);
-  const endDate = end ? new Date(end) : new Date();
+  const startDate = parseLocalDateTime(start);
+  const endDate = end ? parseLocalDateTime(end) : new Date();
+
+  if (!startDate || !endDate) return 0;
+
   const diffMs = endDate - startDate;
   if (diffMs < 0) return 0;
+
   return diffMs / (1000 * 60 * 60);
 }
 
