@@ -1,29 +1,15 @@
-export async function notifyTelegramClockIn(entry) {
+async function notifyTelegramClockIn(entry) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
 
   if (!token || !chatId) {
-    console.log("Telegram notification skipped: missing TELEGRAM_BOT_TOKEN or TELEGRAM_ADMIN_CHAT_ID.");
+    console.log("Telegram notification skipped: missing token or chat ID.");
     return;
   }
 
-  const workerName =
-    entry.worker_name ||
-    entry.workerName ||
-    entry.name ||
-    "Unknown worker";
-
-  const projectName =
-    entry.project_name ||
-    entry.projectName ||
-    "No project";
-
-  const clockTime =
-    entry.datetime_local ||
-    entry.datetime_pst ||
-    entry.datetime_utc ||
-    "Unknown time";
-
+  const workerName = entry.worker_name || entry.worker_id || "Unknown worker";
+  const projectName = entry.project_name || entry.project_id || "No project";
+  const clockTime = entry.datetime_local || "Unknown time";
   const note = entry.note || "";
 
   const message = `
@@ -56,3 +42,7 @@ Note: ${note}
 
   console.log(`Telegram clock-in notification sent for ${workerName}`);
 }
+
+module.exports = {
+  notifyTelegramClockIn
+};
