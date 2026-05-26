@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db');
 const { v4: uuidv4 } = require('uuid');
+const { notifyTelegramClockIn } = require('../utils/notifyTelegram');
 
 // Helper for formatting as Postgres 'YYYY-MM-DD HH:MM'
 function pad(n) { return n < 10 ? '0' + n : n; }
@@ -66,23 +67,44 @@ router.post('/in', async (req, res) => {
     let dtUtcMillis = dtMillis - timezone_offset * 60000;
     let dtUtc = new Date(dtUtcMillis);
     let datetimeUtcStr = formatDateTime(dtUtc);
-    await pool.query(
-      `INSERT INTO clock_entries 
-        (worker_id, project_id, action, datetime_utc, datetime_local, timezone_offset, note, pay_rate, session_id)
-       VALUES 
-        ($1, $2, 'in', $3, $4, $5, $6, $7, $8)`,
-      [
-        worker_id,
-        project_id,
-        datetimeUtcStr,
-        datetimeLocalStr,
-        timezone_offset,
-        note,
-        pay_rate,
-        session_id
-      ]
-    );
-    res.json({ success: true, session_id });
+await pool.query(
+  `INSERT INTO clock_entries 
+    (worker_id, project_id, action, datetime_utc, datetime_local, timezone_offset, note, pay_rate, session_id)
+   VALUES 
+    ($1, $2, 'in', $3, $4, $5, $6, $7, $8)`,
+  [
+    worker_id,
+    project_id,
+    datetimeUtcStr,
+    datetimeLocalStr,
+    timezone_offset,
+    note,
+    pay_rate,
+    session_id
+  ]
+);
+
+// Get worker name and project name for Telegram message
+const notifyResult = await pool.query(
+  `
+  SELECT
+    ce.*,
+    w.name AS worker_name,
+    p.name AS project_name
+  FROM clock_entries ce
+  LEFT JOIN workers w ON ce.worker_id = w.worker_id
+  LEFT JOIN projects p ON ce.project_id = p.id
+  WHERE ce.session_id = $1 AND ce.action = 'in'
+  LIMIT 1
+  `,
+  [session_id]
+);
+
+notifyTelegramClockIn(notifyResult.rows[0]).catch(err => {
+  console.error("Telegram clock-in notification failed:", err.message);
+});
+
+res.json({ success: true, session_id });
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
