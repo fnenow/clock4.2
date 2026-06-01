@@ -241,3 +241,29 @@ async function changePassword() {
     alert(data.message || "Password change failed.");
   }
 }
+
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const res = await fetch('/api/worker/me', {
+      method: 'GET',
+      credentials: 'same-origin'
+    });
+
+    if (!res.ok) return;
+
+    const data = await res.json();
+
+    if (data.success && data.loggedIn && data.worker) {
+      currentWorker = data.worker;
+      localStorage.setItem('worker', JSON.stringify(currentWorker));
+
+      document.getElementById('login-section').style.display = 'none';
+      document.getElementById('clock-section').style.display = '';
+      document.getElementById('greeting').textContent = `Hi, ${currentWorker.name}`;
+
+      loadClockStatus();
+    }
+  } catch (err) {
+    console.log('Worker not logged in yet.');
+  }
+});
