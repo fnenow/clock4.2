@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>FNEClock Admin Login</title>
+
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Arial, sans-serif;
+      background: #f3f4f6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .login-card {
+      width: 100%;
+      max-width: 390px;
+      background: #ffffff;
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+      padding: 30px;
+      box-sizing: border-box;
+    }
+
+    h1 {
+      margin: 0 0 8px 0;
+      text-align: center;
+      color: #b91c1c;
+      font-size: 28px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #555;
+      margin-bottom: 24px;
+      font-size: 14px;
+    }
+
+    label {
+      display: block;
+      margin-top: 14px;
+      margin-bottom: 6px;
+      font-weight: bold;
+      color: #333;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 16px;
+      box-sizing: border-box;
+    }
+
+    button {
+      width: 100%;
+      margin-top: 22px;
+      padding: 12px;
+      background: #b91c1c;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 17px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #7f1d1d;
+    }
+
+    .message {
+      margin-top: 14px;
+      min-height: 20px;
+      text-align: center;
+      font-size: 14px;
+    }
+
+    .error {
+      color: #b91c1c;
+    }
+
+    .success {
+      color: #166534;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="login-card">
+    <h1>FNEClock</h1>
+    <div class="subtitle">Admin Login</div>
+
+    <form id="loginForm">
+      <label for="username">Username</label>
+      <input
+        id="username"
+        name="username"
+        type="text"
+        autocomplete="username"
+        required
+      />
+
+      <label for="password">Password</label>
+      <input
+        id="password"
+        name="password"
+        type="password"
+        autocomplete="current-password"
+        required
+      />
+
+      <button type="submit">Login</button>
+
+      <div id="message" class="message"></div>
+    </form>
+  </div>
+
+  <script>
+    const messageBox = document.getElementById("message");
+
+    function getNextUrl() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("next") || "/dashboard.html";
+    }
+
+    async function checkExistingLogin() {
+      try {
+        const res = await fetch("/api/admin/me", {
+          method: "GET",
+          credentials: "same-origin"
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+
+          if (data.success && data.loggedIn) {
+            window.location.href = getNextUrl();
+          }
+        }
+      } catch (err) {
+        console.log("Not logged in yet.");
+      }
+    }
+
+    checkExistingLogin();
+
+    document.getElementById("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      messageBox.className = "message";
+      messageBox.textContent = "Logging in...";
+
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value;
+
+      try {
+        const res = await fetch("/api/admin/login", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          credentials: "same-origin",
+          body: JSON.stringify({ username, password })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+          messageBox.className = "message error";
+          messageBox.textContent = data.message || "Login failed";
+          return;
+        }
+
+        messageBox.className = "message success";
+        messageBox.textContent = "Login successful";
+
+        window.location.href = getNextUrl();
+      } catch (err) {
+        console.error("Login error:", err);
+        messageBox.className = "message error";
+        messageBox.textContent = "Login failed. Please try again.";
+      }
+    });
+  </script>
+</body>
+</html>
